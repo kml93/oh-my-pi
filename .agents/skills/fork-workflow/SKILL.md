@@ -1,6 +1,6 @@
 ---
 name: fork-workflow
-description: Maintain this dual-upstream repository by synchronizing omp and pi, managing branches, opening upstream PRs, or porting features. Use when working on fork updates, git merges, cherry-picks, or creating pull requests.
+description: Apply git branch conventions, commit formatting, PR creation, or upstream sync rules. Use ONLY when ready to commit changes, create/switch branches, open upstream PRs, or synchronize upstream-omp and upstream-pi remotes. Never use during code research.
 ---
 
 # Dual-Upstream Fork Workflow (`oh-my-pi` + `pi`)
