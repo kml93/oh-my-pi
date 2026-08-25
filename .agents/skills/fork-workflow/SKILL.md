@@ -1,6 +1,6 @@
 ---
 name: fork-workflow
-description: Apply git branch conventions, commit formatting, PR creation, or upstream sync rules. Use ONLY when ready to commit changes, create/switch branches, open upstream PRs, or synchronize upstream-omp and upstream-pi remotes. Never use during code research.
+description: Branch strategy, commits, PRs, and dual-upstream sync. Use when starting a task to pick/create the right base branch, when committing or opening PRs, or when syncing upstream-omp and upstream-pi remotes.
 ---
 
 # Dual-Upstream Fork Workflow (`oh-my-pi` + `pi`)
