@@ -1,11 +1,11 @@
 ---
 name: fork-workflow
-description: Procedures and standards for maintaining this dual-upstream repository, synchronizing omp and pi, managing branches, opening upstream PRs, and porting features.
+description: Maintain this dual-upstream repository by synchronizing omp and pi, managing branches, opening upstream PRs, or porting features. Use when working on fork updates, git merges, cherry-picks, or creating pull requests.
 ---
 
 # Dual-Upstream Fork Workflow (`oh-my-pi` + `pi`)
 
-Operational manual for maintaining `kml93/oh-my-pi`, a live fork based on `can1357/oh-my-pi` with selective feature ports from `earendil-works/pi`.
+Operational procedures for maintaining `kml93/oh-my-pi`, a live fork based on `can1357/oh-my-pi` with selective feature ports from `earendil-works/pi`.
 
 ## Remotes Architecture
 
@@ -15,12 +15,12 @@ upstream-pi  (https://github.com/earendil-works/pi.git)    [Read-only, official 
 origin       (git@github.com:kml93/oh-my-pi.git)          [Read/Write, your GitHub]
 ```
 
-## Branch Strategy
+## Branch Roles & Conventions
 
 - **`main`**: Pure 1:1 mirror of `upstream-omp/main`. Never commit custom code directly to `main`. Used exclusively to pull upstream updates and branch clean PRs.
-- **`kml93`**: Primary working/production branch. Contains `omp` base + custom configurations + ported `pi` features.
+- **`kml93`**: Primary working branch. Contains `omp` base + custom configurations + ported `pi` features.
 - **Temporary branches (Style B)**:
-  - `pi:port--<feature-name>` : Temporary branch for porting a module from `pi`.
+  - `pi:port--<feature-name>` : Porting an isolated module from `pi`.
   - `omp:pr--<fix-name>` : Clean branch created from `main` to propose PRs to `upstream-omp`.
   - `local:mod--<change-name>` : Personal custom adjustments.
   - `omp:sync--<version>` : Experimental synchronization branch for complex upstream merges.
@@ -43,38 +43,34 @@ Format: `<type>(<scope>): <short imperative description>`
 Task Intent
  ├── 1. Porting a feature from PI
  │    └── From `kml93` ➔ branch `pi:port--<name>` ➔ test ➔ merge into `kml93` ➔ delete branch.
- │    └── See `references/porting.md`.
+ │    └── Trigger: Read `references/porting.md` for architectural mapping and porting patterns.
  │
  ├── 2. Upstream PR for official OMP
  │    └── From `main` (clean) ➔ branch `omp:pr--<name>` ➔ commit ➔ push & open PR on GitHub.
  │    └── Merge `omp:pr--<name>` into `kml93` to use immediately without waiting for upstream merge.
- │    └── See `references/pr-workflow.md`.
+ │    └── Trigger: Read `references/pr-workflow.md` for PR lifecycle instructions.
  │
  ├── 3. Upstream OMP update available
- │    └── Checkout `main` ➔ `git merge upstream-omp/main` ➔ push to `origin/main`.
+ │    └── Checkout `main` ➔ `git merge upstream-omp/main --ff-only` ➔ push to `origin/main`.
  │    └── Checkout `kml93` ➔ `git merge main` ➔ test ➔ push to `origin/kml93`.
- │    └── See `references/sync.md`.
+ │    └── Trigger: Read `references/sync.md` for conflict resolution and merge steps.
  │
  └── 4. Inspecting PI updates
       └── `git fetch upstream-pi` ➔ review incoming log ➔ cherry-pick/port selectively.
-      └── See `references/sync.md`.
+      └── Trigger: Read `references/sync.md` for selective tracking.
 ```
 
-## Local Development & Testing
+## Gotchas
+
+- **Never commit directly to `main`**: Any custom commit on `main` breaks fast-forward synchronization with `upstream-omp`.
+- **Never merge entire `upstream-pi/main`**: Full 3-way merge from `pi` will produce thousands of structural file conflicts because `omp` refactored the entire codebase into Rust native extensions and 58 modular directories.
+- **Always verify runtime after merges**: Run `bun packages/coding-agent/src/cli.ts --version` to ensure native bindings and TypeScript types remain sound.
+
+## Local Runtime Execution
 
 - **Binary name**: `omp` (`packages/coding-agent/src/cli.ts`).
-- **Live testing with Bun**:
+- **Live development with Bun**:
   ```bash
   cd packages/coding-agent && bun link
   bun link @oh-my-pi/pi-coding-agent
   ```
-- **Smoke test command**:
-  ```bash
-  bun packages/coding-agent/src/cli.ts --version
-  ```
-
-## Reference Guides
-
-- `references/sync.md`: Step-by-step upstream synchronization commands and conflict resolution.
-- `references/porting.md`: Rules and patterns for importing code from `pi` into `omp`.
-- `references/pr-workflow.md`: Clean PR creation and lifecycle towards `can1357/oh-my-pi`.
