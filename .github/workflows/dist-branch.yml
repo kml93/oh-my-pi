@@ -1,0 +1,88 @@
+name: Deploy Dist Branch
+
+on:
+  push:
+    branches:
+      - kml93
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-deploy:
+    name: Build ELF Binary & Deploy to Dist
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.4"
+
+      - name: Setup Rust Toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Bun dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.bun/install/cache
+          key: bun-${{ runner.os }}-${{ hashFiles('**/bun.lock') }}
+          restore-keys: |
+            bun-${{ runner.os }}-
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Build native Rust bindings
+        run: bun run build:native
+
+      - name: Build standalone ELF binary
+        run: bun --cwd=packages/coding-agent run build
+
+      - name: Prepare distribution payload
+        run: |
+          mkdir -p dist-payload
+          cp packages/coding-agent/dist/omp dist-payload/omp
+          chmod +x dist-payload/omp
+
+          VERSION=$(node -p "require('./packages/coding-agent/package.json').version")
+
+          cat <<EOF > dist-payload/package.json
+          {
+            "name": "oh-my-pi",
+            "version": "${VERSION}",
+            "description": "omp coding agent - standalone distribution",
+            "type": "module",
+            "bin": {
+              "omp": "./omp"
+            },
+            "files": [
+              "omp"
+            ]
+          }
+          EOF
+
+          cat <<EOF > dist-payload/README.md
+          # oh-my-pi (Distribution Branch)
+
+          Standalone pre-compiled distribution for \`omp\`.
+
+          ## Installation
+          \`\`\`bash
+          bun install --global github:kml93/oh-my-pi#dist
+          \`\`\`
+          EOF
+
+      - name: Deploy to dist branch
+        run: |
+          cd dist-payload
+          git init -b dist
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "chore(dist): update standalone omp binary [${GITHUB_SHA::7}]"
+          git push --force "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" dist
