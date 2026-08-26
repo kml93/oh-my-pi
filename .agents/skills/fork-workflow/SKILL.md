@@ -64,13 +64,40 @@ Task Intent
 
 - **Never commit directly to `main`**: Any custom commit on `main` breaks fast-forward synchronization with `upstream-omp`.
 - **Never merge entire `upstream-pi/main`**: Full 3-way merge from `pi` will produce thousands of structural file conflicts because `omp` refactored the entire codebase into Rust native extensions and 58 modular directories.
-- **Always verify runtime after merges**: Run `bun packages/coding-agent/src/cli.ts --version` to ensure native bindings and TypeScript types remain sound.
+- **Always verify runtime after merges**: Run `omp --smoke-test` (or `bun packages/coding-agent/src/cli.ts --version`) to ensure native bindings and TypeScript types remain sound.
 
 ## Local Runtime Execution
 
-- **Binary name**: `omp` (`packages/coding-agent/src/cli.ts`).
-- **Live development with Bun**:
+- **Binary**: `omp` (`packages/coding-agent/src/cli.ts`).
+- **Dev machine (source-linked)**: `bun install --global ./packages/coding-agent`
+  symlinks the workspace package into Bun's global tree, so the global `omp`
+  runs this checkout's working tree — branch switches and uncommitted edits are
+  live. `sh scripts/link-omp.sh` is the wrapper alternative (same effect).
+  - Minimal deps (~312 MB, no Rust toolchain):
+    `bun install --production --filter @oh-my-pi/pi-coding-agent`, then fetch
+    the prebuilt addons pinned to the workspace natives version (same pattern
+    as CI; the files live in gitignored `packages/natives/native/` and survive
+    later installs — unlike a `--no-save` npm leaf, which is extraneous and
+    gets purged, and whose bare name resolves to the stale lockfile pin):
+    ```bash
+    ver=$(bun -e "console.log(require('./packages/natives/package.json').version)")
+    tb=$(npm view "@oh-my-pi/pi-natives-linux-x64@$ver" dist.tarball)
+    tmp=$(mktemp -d) && curl -fsSL --retry 3 "$tb" | tar -xz -C "$tmp"
+    cp "$tmp/package/"pi_natives.*.node packages/natives/native/
+    ```
+    Exact version match is enforced at load time (version sentinel) — a
+    mismatched addon makes `omp --smoke-test` fail before a session starts.
+  - Moving or deleting the checkout breaks `omp` (symlink chain); re-run the
+    global install from the new path.
+  - Never install the dist build globally on a dev machine — it overwrites the
+    source link. Dev machines = source link, usage machines = dist.
+  - Probe before a session: `omp --smoke-test`.
+- **Usage machines (dist, no repo)**: rolling prerelease `dist` on the fork,
+  rebuilt on every push to `kml93` (`.github/workflows/dist-release.yml`; the
+  npm natives leaf is fetched and embedded in the ELF — nothing else to install):
   ```bash
-  cd packages/coding-agent && bun link
-  bun link @oh-my-pi/pi-coding-agent
+  curl -fsSL -o ~/.config/local/bin/omp \
+    https://github.com/kml93/oh-my-pi/releases/download/dist/omp-linux-x64
+  chmod +x ~/.config/local/bin/omp
   ```
+  Stable URL — re-run to update. linux-x64/glibc only.
