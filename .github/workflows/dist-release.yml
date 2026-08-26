@@ -1,4 +1,4 @@
-name: Deploy Dist Branch
+name: Deploy Dist Release
 
 on:
   push:
@@ -6,10 +6,10 @@ on:
       - kml93
   workflow_dispatch:
 
-# Serialize dist deploys: two rapid kml93 pushes must not force-push the dist
-# branch concurrently (lost updates / interleaved failures).
+# Serialize dist deploys: two rapid kml93 pushes must not publish the
+# rolling dist release concurrently (lost updates / interleaved failures).
 concurrency:
-  group: dist-branch
+  group: dist-release
   cancel-in-progress: true
 
 permissions:
@@ -17,7 +17,7 @@ permissions:
 
 jobs:
   build-and-deploy:
-    name: Build standalone binary & deploy to dist
+    name: Build standalone binary & publish dist release
     # 22.04 (not latest): glibc 2.35 instead of 2.39 — the produced ELF and
     # its embedded addon stay loadable on older glibc machines.
     runs-on: ubuntu-22.04
