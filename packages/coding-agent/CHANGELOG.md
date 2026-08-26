@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- Added configurable shortcuts to open settings and cycle the session-only tool approval mode.
+
 ## [18.0.6] - 2026-08-26
 
 ### Added

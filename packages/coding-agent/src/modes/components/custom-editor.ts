@@ -32,6 +32,8 @@ type ConfigurableEditorAction = Extract<
 	| "app.exit"
 	| "app.suspend"
 	| "app.display.reset"
+	| "app.approval.cycle"
+	| "app.settings.open"
 	| "app.thinking.cycle"
 	| "app.model.cycleForward"
 	| "app.model.cycleBackward"
@@ -54,6 +56,8 @@ const DEFAULT_ACTION_KEYS: Record<ConfigurableEditorAction, KeyId[]> = {
 	"app.exit": ["ctrl+d"],
 	"app.suspend": ["ctrl+z"],
 	"app.display.reset": ["alt+l"],
+	"app.approval.cycle": [],
+	"app.settings.open": ["alt+s"],
 	"app.thinking.cycle": ["shift+tab"],
 	"app.model.cycleForward": ["ctrl+p"],
 	"app.model.cycleBackward": ["shift+ctrl+p"],
@@ -689,6 +693,8 @@ export class CustomEditor extends Editor {
 	onClear?: () => void;
 	onExit?: () => void;
 	onDisplayReset?: () => void;
+	onCycleApprovalMode?: () => void;
+	onOpenSettings?: () => void;
 	onCycleThinkingLevel?: () => void;
 	onCycleModelForward?: () => void;
 	onCycleModelBackward?: () => void;
@@ -1027,6 +1033,18 @@ export class CustomEditor extends Editor {
 			// Intercept configured suspend shortcut
 			if (this.#matchesAction(canonical, "app.suspend") && this.onSuspend) {
 				this.onSuspend();
+				return;
+			}
+
+			// Intercept configured approval-mode cycling
+			if (this.#matchesAction(canonical, "app.approval.cycle") && this.onCycleApprovalMode) {
+				this.onCycleApprovalMode();
+				return;
+			}
+
+			// Intercept configured settings shortcut
+			if (this.#matchesAction(canonical, "app.settings.open") && this.onOpenSettings) {
+				this.onOpenSettings();
 				return;
 			}
 

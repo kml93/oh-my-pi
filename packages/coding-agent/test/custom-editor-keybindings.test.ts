@@ -57,6 +57,23 @@ describe("CustomEditor keybindings", () => {
 		expect(onRetry).not.toHaveBeenCalled();
 	});
 
+	it("routes configured approval and settings chords through handleInput", () => {
+		const editor = new CustomEditor(getEditorTheme());
+		const onCycleApprovalMode = vi.fn();
+		const onOpenSettings = vi.fn();
+
+		editor.setActionKeys("app.approval.cycle", ["alt+o"]);
+		editor.setActionKeys("app.settings.open", ["alt+s"]);
+		editor.onCycleApprovalMode = onCycleApprovalMode;
+		editor.onOpenSettings = onOpenSettings;
+
+		editor.handleInput("\x1bo");
+		editor.handleInput("\x1bs");
+
+		expect(onCycleApprovalMode).toHaveBeenCalledTimes(1);
+		expect(onOpenSettings).toHaveBeenCalledTimes(1);
+	});
+
 	it("routes Ctrl+L to a live-toggle custom handler and Alt+L to display reset by default", () => {
 		const editor = new CustomEditor(getEditorTheme());
 		const onDisplayReset = vi.fn();
