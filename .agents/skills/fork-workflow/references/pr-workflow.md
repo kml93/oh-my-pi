@@ -10,7 +10,7 @@ Never branch a PR from `kml93`. Always start from up-to-date `main`:
 git checkout main
 git fetch upstream-omp
 git merge upstream-omp/main --ff-only
-git checkout -b omp:pr--<short-description>
+git checkout -b omp/pr--<short-description>
 ```
 
 ## 2. Implement & Verify
@@ -29,12 +29,12 @@ git checkout -b omp:pr--<short-description>
 ## 3. Push and Open PR
 
 ```bash
-git push -u origin omp:pr--<short-description>
+git push -u origin omp/pr--<short-description>
 ```
 
 Open PR on GitHub:
 - Base repository: `can1357/oh-my-pi` (branch `main`)
-- Head repository: `kml93/oh-my-pi` (branch `omp:pr--<short-description>`)
+- Head repository: `kml93/oh-my-pi` (branch `omp/pr--<short-description>`)
 
 ## 4. Benefit from your PR Immediately in `kml93`
 
@@ -42,7 +42,7 @@ Do not wait for upstream review to use your own fix:
 
 ```bash
 git checkout kml93
-git merge omp:pr--<short-description>
+git merge omp/pr--<short-description>
 git push origin kml93
 ```
 

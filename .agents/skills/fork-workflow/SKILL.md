@@ -1,6 +1,6 @@
 ---
 name: fork-workflow
-description: Branch strategy, commits, PRs, and dual-upstream sync. Use when starting a task to pick/create the right base branch, when committing or opening PRs, or when syncing upstream-omp and upstream-pi remotes.
+description: Branch strategy, commits, PRs, dual-upstream sync, and running omp from this fork. Use for base-branch choices, commits, PRs, upstream syncs, or running/testing omp locally (dev source link, branch worktrees, dist install).
 ---
 
 # Dual-Upstream Fork Workflow (`oh-my-pi` + `pi`)
@@ -20,10 +20,10 @@ origin       (git@github.com:kml93/oh-my-pi.git)          [Read/Write, your GitH
 - **`main`**: Pure 1:1 mirror of `upstream-omp/main`. Never commit custom code directly to `main`. Used exclusively to pull upstream updates and branch clean PRs.
 - **`kml93`**: Primary working branch. Contains `omp` base + custom configurations + ported `pi` features.
 - **Temporary branches (Style B)**:
-  - `pi:port--<feature-name>` : Porting an isolated module from `pi`.
-  - `omp:pr--<fix-name>` : Clean branch created from `main` to propose PRs to `upstream-omp`.
-  - `local:mod--<change-name>` : Personal custom adjustments.
-  - `omp:sync--<version>` : Experimental synchronization branch for complex upstream merges.
+  - `pi/port--<feature-name>` : Porting an isolated module from `pi`.
+  - `omp/pr--<fix-name>` : Clean branch created from `main` to propose PRs to `upstream-omp`.
+  - `local/mod--<change-name>` : Personal custom adjustments.
+  - `omp/sync--<version>` : Experimental synchronization branch for complex upstream merges.
 
 ## Commit Conventions (Extended Conventional Commits)
 
@@ -42,12 +42,12 @@ Format: `<type>(<scope>): <short imperative description>`
 ```text
 Task Intent
  ├── 1. Porting a feature from PI
- │    └── From `kml93` ➔ branch `pi:port--<name>` ➔ test ➔ merge into `kml93` ➔ delete branch.
+ │    └── From `kml93` ➔ branch `pi/port--<name>` ➔ test ➔ merge into `kml93` ➔ delete branch.
  │    └── Trigger: Read `references/porting.md` for architectural mapping and porting patterns.
  │
  ├── 2. Upstream PR for official OMP
- │    └── From `main` (clean) ➔ branch `omp:pr--<name>` ➔ commit ➔ push & open PR on GitHub.
- │    └── Merge `omp:pr--<name>` into `kml93` to use immediately without waiting for upstream merge.
+ │    └── From `main` (clean) ➔ branch `omp/pr--<name>` ➔ commit ➔ push & open PR on GitHub.
+ │    └── Merge `omp/pr--<name>` into `kml93` to use immediately without waiting for upstream merge.
  │    └── Trigger: Read `references/pr-workflow.md` for PR lifecycle instructions.
  │
  ├── 3. Upstream OMP update available
@@ -65,39 +65,27 @@ Task Intent
 - **Never commit directly to `main`**: Any custom commit on `main` breaks fast-forward synchronization with `upstream-omp`.
 - **Never merge entire `upstream-pi/main`**: Full 3-way merge from `pi` will produce thousands of structural file conflicts because `omp` refactored the entire codebase into Rust native extensions and 58 modular directories.
 - **Always verify runtime after merges**: Run `omp --smoke-test` (or `bun packages/coding-agent/src/cli.ts --version`) to ensure native bindings and TypeScript types remain sound.
+- **Git forbids `:` in branch names**: write the conventional prefixes with `/` (`omp/pr--*`, `pi/port--*`).
 
-## Local Runtime Execution
+## Running omp from this fork
 
-- **Binary**: `omp` (`packages/coding-agent/src/cli.ts`).
-- **Dev machine (source-linked)**: `bun install --global ./packages/coding-agent`
-  symlinks the workspace package into Bun's global tree, so the global `omp`
-  runs this checkout's working tree — branch switches and uncommitted edits are
-  live. `sh scripts/link-omp.sh` is the wrapper alternative (same effect).
-  - Minimal deps (~312 MB, no Rust toolchain):
-    `bun install --production --filter @oh-my-pi/pi-coding-agent`, then fetch
-    the prebuilt addons pinned to the workspace natives version (same pattern
-    as CI; the files live in gitignored `packages/natives/native/` and survive
-    later installs — unlike a `--no-save` npm leaf, which is extraneous and
-    gets purged, and whose bare name resolves to the stale lockfile pin):
-    ```bash
-    ver=$(bun -e "console.log(require('./packages/natives/package.json').version)")
-    tb=$(npm view "@oh-my-pi/pi-natives-linux-x64@$ver" dist.tarball)
-    tmp=$(mktemp -d) && curl -fsSL --retry 3 "$tb" | tar -xz -C "$tmp"
-    cp "$tmp/package/"pi_natives.*.node packages/natives/native/
-    ```
-    Exact version match is enforced at load time (version sentinel) — a
-    mismatched addon makes `omp --smoke-test` fail before a session starts.
-  - Moving or deleting the checkout breaks `omp` (symlink chain); re-run the
-    global install from the new path.
-  - Never install the dist build globally on a dev machine — it overwrites the
-    source link. Dev machines = source link, usage machines = dist.
-  - Probe before a session: `omp --smoke-test`.
-- **Usage machines (dist, no repo)**: rolling prerelease `dist` on the fork,
-  rebuilt on every push to `kml93` (`.github/workflows/dist-release.yml`; the
-  npm natives leaf is fetched and embedded in the ELF — nothing else to install):
-  ```bash
-  curl -fsSL -o ~/.config/local/bin/omp \
-    https://github.com/kml93/oh-my-pi/releases/download/dist/omp-linux-x64
-  chmod +x ~/.config/local/bin/omp
-  ```
-  Stable URL — re-run to update. linux-x64/glibc only.
+| Situation | Setup |
+|---|---|
+| Dev machine | source-linked `omp` — runs this checkout's working tree, live |
+| Testing a branch | throwaway `git worktree`; the main checkout stays on `kml93` |
+| Usage machine (no repo) | single binary from the rolling `dist` release |
+
+Invariants (commands and full procedures in `references/runtime.md`):
+
+- The main checkout never leaves `kml93`: the global `omp` executes whatever
+  branch is checked out there.
+- Native addons must match `packages/natives/package.json` exactly (version
+  sentinel at load time). Fetch them version-pinned — never
+  `bun add @oh-my-pi/pi-natives-* --no-save` (stale lockfile pin, purged on
+  the next install).
+- Never install the dist build globally on a dev machine — it overwrites the
+  source link.
+- After merges or setup changes, run `omp --smoke-test` before a session.
+
+Read `references/runtime.md` when setting up a machine, when `omp` fails to
+start (native loader errors), or before testing a branch outside `kml93`.

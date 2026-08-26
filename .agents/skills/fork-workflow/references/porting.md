@@ -25,7 +25,7 @@
 1. Create temporary port branch:
    ```bash
    git checkout kml93
-   git checkout -b pi:port--<feature-name>
+   git checkout -b pi/port--<feature-name>
    ```
 2. Inspect source in `upstream-pi`:
    ```bash
@@ -42,7 +42,7 @@
    git add -A
    git commit -m "port(pi): integrate <feature-name>"
    git checkout kml93
-   git merge pi:port--<feature-name>
-   git branch -d pi:port--<feature-name>
+   git merge pi/port--<feature-name>
+   git branch -d pi/port--<feature-name>
    git push origin kml93
    ```

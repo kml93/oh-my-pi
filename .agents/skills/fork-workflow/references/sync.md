@@ -45,13 +45,13 @@ git log --oneline --graph kml93..upstream-pi/main
 When an isolated bugfix or feature is identified:
 ```bash
 git checkout kml93
-git checkout -b pi:port--<feature-name>
+git checkout -b pi/port--<feature-name>
 # If cleanly cherry-pickable:
 git cherry-pick <commit-hash>
 # Otherwise, manually adapt the code to omp architecture
 # Test, then merge:
 git checkout kml93
-git merge pi:port--<feature-name>
-git branch -d pi:port--<feature-name>
+git merge pi/port--<feature-name>
+git branch -d pi/port--<feature-name>
 git push origin kml93
 ```
