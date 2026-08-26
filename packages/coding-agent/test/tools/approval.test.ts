@@ -4,8 +4,10 @@ import { LSP_READONLY_ACTIONS } from "@oh-my-pi/pi-coding-agent/lsp";
 import {
 	type ApprovalMode,
 	formatApprovalPrompt,
+	nextApprovalMode,
 	requiresApproval,
 	resolveApproval,
+	resolveApprovalModeCycle,
 	truncateForPrompt,
 } from "@oh-my-pi/pi-coding-agent/tools/approval";
 import { BashTool } from "@oh-my-pi/pi-coding-agent/tools/bash";
@@ -51,6 +53,25 @@ function bashApproval(command: string, settingsOverrides: Record<string, unknown
 	if (typeof approval !== "function") throw new Error("Bash approval must be dynamic");
 	return approval({ command });
 }
+
+describe("approval mode cycling", () => {
+	it("cycles every active mode through the strictness loop", () => {
+		expect(nextApprovalMode("always-ask")).toBe("write");
+		expect(nextApprovalMode("write")).toBe("yolo");
+		expect(nextApprovalMode("yolo")).toBe("always-ask");
+	});
+
+	it("keeps explicit auto-approve sessions locked to yolo", () => {
+		expect(resolveApprovalModeCycle("yolo", true)).toEqual({
+			kind: "locked",
+			reason: "--yolo/--auto-approve",
+		});
+	});
+
+	it("returns the next mode when auto-approve is not locked", () => {
+		expect(resolveApprovalModeCycle("write", false)).toEqual({ kind: "changed", mode: "yolo" });
+	});
+});
 
 describe("resolveApproval tier matrix", () => {
 	const cases: Array<[ApprovalMode, "read" | "write" | "exec", "allow" | "prompt"]> = [

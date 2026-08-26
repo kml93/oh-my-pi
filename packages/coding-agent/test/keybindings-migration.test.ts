@@ -287,6 +287,13 @@ describe("KeybindingsManager.create", () => {
 		expect(manager.getKeys("app.live.toggle")).toEqual(["ctrl+l"]);
 	});
 
+	it("defaults settings to Alt+S and leaves approval cycling opt-in", () => {
+		const manager = KeybindingsManager.inMemory();
+
+		expect(manager.getKeys("app.settings.open")).toEqual(["alt+s"]);
+		expect(manager.getKeys("app.approval.cycle")).toEqual([]);
+	});
+
 	it("keeps the Ctrl+L live toggle default when an old model remap still claims Ctrl+L", () => {
 		const manager = KeybindingsManager.inMemory({
 			"app.model.select": "ctrl+l",

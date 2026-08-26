@@ -11,7 +11,24 @@ import type { AgentTool, ToolApprovalDecision, ToolTier } from "@oh-my-pi/pi-age
 export type { ToolApproval, ToolApprovalDecision, ToolTier } from "@oh-my-pi/pi-agent-core";
 
 export type ApprovalPolicy = "allow" | "deny" | "prompt";
-export type ApprovalMode = "always-ask" | "write" | "yolo";
+export const APPROVAL_MODES = ["always-ask", "write", "yolo"] as const;
+export type ApprovalMode = (typeof APPROVAL_MODES)[number];
+
+/** Return the next approval mode in the canonical configuration order. */
+export function nextApprovalMode(mode: ApprovalMode): ApprovalMode {
+	const nextIndex = (APPROVAL_MODES.indexOf(mode) + 1) % APPROVAL_MODES.length;
+	return APPROVAL_MODES[nextIndex]!;
+}
+
+export type ApprovalModeCycleResult =
+	| { kind: "changed"; mode: ApprovalMode }
+	| { kind: "locked"; reason: "--yolo/--auto-approve" };
+
+/** Resolve an interactive approval-mode cycle without weakening an explicit auto-approve lock. */
+export function resolveApprovalModeCycle(mode: ApprovalMode, autoApprove: boolean): ApprovalModeCycleResult {
+	if (autoApprove) return { kind: "locked", reason: "--yolo/--auto-approve" };
+	return { kind: "changed", mode: nextApprovalMode(mode) };
+}
 
 type ApprovalSubject = Pick<AgentTool, "name" | "approval" | "formatApprovalDetails">;
 
