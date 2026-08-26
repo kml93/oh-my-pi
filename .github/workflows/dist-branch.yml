@@ -96,57 +96,25 @@ jobs:
 
       - name: Prepare distribution payload
         run: |
-          mkdir -p dist-payload
-          cp packages/coding-agent/dist/omp dist-payload/omp
-          chmod +x dist-payload/omp
-          cp LICENSE dist-payload/LICENSE
-          cp THIRD-PARTY-NOTICES.txt dist-payload/THIRD-PARTY-NOTICES.txt
+          cp packages/coding-agent/dist/omp omp-linux-x64
+          chmod +x omp-linux-x64
 
-          VERSION=$(node -p "require('./packages/coding-agent/package.json').version")
-
-          # Build-metadata suffix makes every dist rebuild a distinct version:
-          # bun's global install cache cannot silently serve a stale copy.
-          cat <<EOF > dist-payload/package.json
-          {
-            "name": "oh-my-pi",
-            "version": "${VERSION}+dist.${GITHUB_SHA::7}",
-            "description": "omp coding agent - standalone linux-x64 distribution",
-            "license": "MIT",
-            "type": "module",
-            "os": ["linux"],
-            "cpu": ["x64"],
-            "bin": {
-              "omp": "./omp"
-            },
-            "files": [
-              "omp",
-              "LICENSE",
-              "THIRD-PARTY-NOTICES.txt"
-            ]
-          }
-          EOF
-
-          cat <<EOF > dist-payload/README.md
-          # oh-my-pi (distribution branch)
-
-          Standalone pre-compiled distribution for \`omp\` (linux-x64, glibc).
-          Native addons are embedded in the binary — nothing else to install.
-
-          ## Installation
-
-          \`\`\`bash
-          bun install --global github:kml93/oh-my-pi#dist
-          \`\`\`
-
-          Version \`${VERSION}+dist.${GITHUB_SHA::7}\` — built from commit \`${GITHUB_SHA}\`.
-          EOF
-
-      - name: Deploy to dist branch
+      # GitHub hard-rejects files over 100 MB in git refs (the omp ELF is
+      # ~180 MB) and bun cannot install remote tarball URLs, so the binary
+      # ships as a rolling Release asset (2 GB limit). The lightweight `dist`
+      # tag moves to the built SHA and the asset URL stays stable:
+      #   curl -fsSL -o ~/.config/local/bin/omp \
+      #     https://github.com/kml93/oh-my-pi/releases/download/dist/omp-linux-x64
+      #   chmod +x ~/.config/local/bin/omp
+      - name: Publish rolling dist tag & release
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          cd dist-payload
-          git init -b dist
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add -A
-          git commit -m "chore(dist): update standalone omp binary [${GITHUB_SHA::7}]"
-          git push --force "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" dist
+          git tag -f dist "$GITHUB_SHA"
+          git push --force "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" refs/tags/dist
+          gh release view dist --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 \
+            || gh release create dist --repo "$GITHUB_REPOSITORY" --prerelease \
+              --title "omp dist (kml93 rolling)" \
+              --notes "Rolling standalone linux-x64 build of kml93, rebuilt on every push. Native addons are embedded — download omp-linux-x64, chmod +x, done."
+          gh release upload dist omp-linux-x64 LICENSE THIRD-PARTY-NOTICES.txt \
+            --repo "$GITHUB_REPOSITORY" --clobber
