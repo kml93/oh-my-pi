@@ -67,25 +67,7 @@ Task Intent
 - **Always verify runtime after merges**: Run `omp --smoke-test` (or `bun packages/coding-agent/src/cli.ts --version`) to ensure native bindings and TypeScript types remain sound.
 - **Git forbids `:` in branch names**: write the conventional prefixes with `/` (`omp/pr--*`, `pi/port--*`).
 
-## Running omp from this fork
+## Runtime
 
-| Situation | Setup |
-|---|---|
-| Dev machine | source-linked `omp` — runs this checkout's working tree, live |
-| Testing a branch | throwaway `git worktree`; the main checkout stays on `kml93` |
-| Usage machine (no repo) | single binary from the rolling `dist` release |
-
-Invariants (commands and full procedures in `references/runtime.md`):
-
-- The main checkout never leaves `kml93`: the global `omp` executes whatever
-  branch is checked out there.
-- Native addons must match `packages/natives/package.json` exactly (version
-  sentinel at load time). Fetch them version-pinned — never
-  `bun add @oh-my-pi/pi-natives-* --no-save` (stale lockfile pin, purged on
-  the next install).
-- Never install the dist build globally on a dev machine — it overwrites the
-  source link.
-- After merges or setup changes, run `omp --smoke-test` before a session.
-
-Read `references/runtime.md` when setting up a machine, when `omp` fails to
-start (native loader errors), or before testing a branch outside `kml93`.
+Read `references/runtime.md` for dev setup, worktree testing, or dist usage.
+Dev setup uses `scripts/setup-minimum-runtime-dev.sh`.
