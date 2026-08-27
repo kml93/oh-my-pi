@@ -1,6 +1,7 @@
 ---
-description: Dual-upstream fork identity, mission, and architectural directives.
 alwaysApply: true
+description: Dual-upstream fork identity, mission, and architectural directives.
+trigger: always_on
 ---
 
 # Dual-Upstream Fork Context
