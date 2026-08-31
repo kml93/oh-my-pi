@@ -49,6 +49,24 @@ describe("CodexSttTranscriber", () => {
 		await session.dispose();
 	});
 
+	it("sends the workspace residency header for region-pinned enterprise tokens", async () => {
+		const payload = { "https://api.openai.com/auth": { chatgpt_data_residency: "eu" } };
+		const access: OAuthAccess = {
+			accessToken: `h.${Buffer.from(JSON.stringify(payload)).toString("base64")}.s`,
+			accountId: "account-id",
+		};
+		const fetchMock = vi
+			.fn()
+			.mockResolvedValue(new Response(JSON.stringify({ text: "transcribed" }), { status: 200 }));
+		const transcriber = new CodexSttTranscriber({ fetch: fetchMock });
+		const session = await transcriber.createSession(makeContext(vi.fn().mockResolvedValue(access)), callbacks);
+		session.pushAudio(new Float32Array([0.25, -0.25]));
+		await expect(session.stop()).resolves.toBe("transcribed");
+		const init = fetchMock.mock.calls[0]?.[1] as { headers: Record<string, string> };
+		expect(init.headers["x-openai-internal-codex-residency"]).toBe("eu");
+		await session.dispose();
+	});
+
 	it("rejects before recording when no Codex account is configured", async () => {
 		const transcriber = new CodexSttTranscriber();
 		await expect(transcriber.createSession(makeContext(vi.fn().mockResolvedValue(null)), callbacks)).rejects.toThrow(

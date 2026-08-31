@@ -2,6 +2,7 @@ import { type OAuthAccess, withOAuthAccess } from "@oh-my-pi/pi-ai";
 import { ProviderHttpError } from "@oh-my-pi/pi-ai/error";
 import { wrapFetchForProxy } from "@oh-my-pi/pi-ai/utils/proxy";
 import {
+	applyCodexResidencyHeader,
 	CODEX_BASE_URL,
 	getCodexAccountId,
 	OPENAI_HEADER_VALUES,
@@ -122,18 +123,20 @@ class CodexTranscriptionSession implements SttTranscriptionSession {
 		const signal = this.#context.signal
 			? AbortSignal.any([this.#context.signal, AbortSignal.timeout(CODEX_STT.requestTimeoutMs)])
 			: AbortSignal.timeout(CODEX_STT.requestTimeoutMs);
+		const headers: Record<string, string> = {
+			Authorization: `Bearer ${access.accessToken}`,
+			[OPENAI_HEADERS.ACCOUNT_ID]: access.accountId ?? getCodexAccountId(access.accessToken) ?? "",
+			[OPENAI_HEADERS.ORIGINATOR]: OPENAI_HEADER_VALUES.CODEX_DESKTOP.NAME,
+			"User-Agent": OPENAI_HEADER_VALUES.CODEX_DESKTOP.USER_AGENT,
+			Accept: "application/json",
+			"OpenAI-Beta": "responses=experimental",
+			"Content-Type": `multipart/form-data; boundary=${boundary}`,
+			"Content-Length": String(body.byteLength),
+		};
+		applyCodexResidencyHeader(headers, access.accessToken);
 		const response = await this.#fetch(CODEX_STT.transcribeUrl, {
 			method: "POST",
-			headers: {
-				Authorization: `Bearer ${access.accessToken}`,
-				[OPENAI_HEADERS.ACCOUNT_ID]: access.accountId ?? getCodexAccountId(access.accessToken) ?? "",
-				[OPENAI_HEADERS.ORIGINATOR]: OPENAI_HEADER_VALUES.CODEX_DESKTOP.NAME,
-				"User-Agent": OPENAI_HEADER_VALUES.CODEX_DESKTOP.USER_AGENT,
-				Accept: "application/json",
-				"OpenAI-Beta": "responses=experimental",
-				"Content-Type": `multipart/form-data; boundary=${boundary}`,
-				"Content-Length": String(body.byteLength),
-			},
+			headers,
 			body,
 			signal,
 		});
