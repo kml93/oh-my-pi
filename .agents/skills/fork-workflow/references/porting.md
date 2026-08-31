@@ -20,29 +20,29 @@
    - One self-contained commit per ported module or feature:
      `port(pi): import html session exporter from v0.84.3`
 
-## Step-by-Step Porting Workflow
+## Porting Workflow
 
-1. Create temporary port branch:
+1. Fetch PI and create a worktree from `kml93`:
    ```bash
-   git checkout kml93
-   git checkout -b pi/port--<feature-name>
+   git fetch upstream-pi
+   git worktree add -b pi/port--<feature-name> ../pi-port--<feature-name> kml93
    ```
-2. Inspect source in `upstream-pi`:
+2. Inspect source without merging PI history:
    ```bash
    git show upstream-pi/main:<path/to/file>
    ```
-3. Copy/adapt code into the appropriate `packages/coding-agent/src/` location.
+3. Adapt the code into the corresponding OMP subsystem.
 4. Verify imports, types, and runtime:
    ```bash
    bun packages/coding-agent/src/cli.ts --version
    bun dev
    ```
-5. Commit and merge into `kml93`:
+5. Commit, then integrate from the primary `kml93` checkout:
    ```bash
    git add -A
    git commit -m "port(pi): integrate <feature-name>"
-   git checkout kml93
-   git merge pi/port--<feature-name>
+   git -C <primary-checkout> merge pi/port--<feature-name>
+   git -C <primary-checkout> push origin kml93
+   git worktree remove ../pi-port--<feature-name>
    git branch -d pi/port--<feature-name>
-   git push origin kml93
    ```

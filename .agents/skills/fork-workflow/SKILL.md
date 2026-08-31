@@ -1,11 +1,37 @@
 ---
 name: fork-workflow
-description: Branch strategy, commits, PRs, dual-upstream sync, and running omp from this fork. Use for base-branch choices, commits, PRs, upstream syncs, or running/testing omp locally (dev source link, branch worktrees, dist install).
+description: Use before any task that may create a commit or PR, including conditional bug investigations, and for branch choice, upstream sync, ports, merges, or running/testing omp locally. Load before inspecting or editing when a PR is possible.
 ---
 
 # Dual-Upstream Fork Workflow (`oh-my-pi` + `pi`)
 
 Operational procedures for maintaining `kml93/oh-my-pi`, a live fork based on `can1357/oh-my-pi` with selective feature ports from `earendil-works/pi`.
+
+## Decision Tree
+
+Destination determines the base: upstream OMP work starts from `main`; fork-local work starts from `kml93`. Keep the primary checkout on `kml93`.
+
+```text
+What is the intended result?
+├─ Read-only inspection → No branch or worktree.
+├─ PR to can1357/oh-my-pi → `omp/pr--<name>` worktree from current `main`.
+│  └─ PR only if a bug is confirmed? Investigate read-only first.
+│     ├─ Not confirmed → Report; stop unchanged.
+│     └─ Confirmed → Create the worktree before the first edit.
+├─ Selective port from earendil-works/pi → `pi/port--<name>` worktree from `kml93`.
+├─ Durable fork-local change → `local/mod--<name>` worktree from `kml93`.
+├─ Upstream synchronization → Follow `references/sync.md`.
+└─ Trivial fork-local change → MAY edit `kml93` directly.
+```
+
+Uncertain whether a change is trivial? Use `local/mod--<name>`. Every non-trivial change MUST use a dedicated worktree.
+
+Read the matching procedure before changing repository state:
+
+- OMP PR → `references/pr-workflow.md`
+- PI port → `references/porting.md`
+- OMP/PI synchronization → `references/sync.md`
+- Running or testing another branch → `references/runtime.md`
 
 ## Remotes Architecture
 
@@ -15,59 +41,31 @@ upstream-pi  (https://github.com/earendil-works/pi.git)    [Read-only, official 
 origin       (git@github.com:kml93/oh-my-pi.git)          [Read/Write, your GitHub]
 ```
 
-## Branch Roles & Conventions
+## Branch Roles
 
-- **`main`**: Pure 1:1 mirror of `upstream-omp/main`. Never commit custom code directly to `main`. Used exclusively to pull upstream updates and branch clean PRs.
-- **`kml93`**: Primary working branch. Contains `omp` base + custom configurations + ported `pi` features.
-- **Temporary branches (Style B)**:
-  - `pi/port--<feature-name>` : Porting an isolated module from `pi`.
-  - `omp/pr--<fix-name>` : Clean branch created from `main` to propose PRs to `upstream-omp`.
-  - `local/mod--<change-name>` : Personal custom adjustments.
-  - `omp/sync--<version>` : Experimental synchronization branch for complex upstream merges.
+- **`main`**: Exact mirror of `upstream-omp/main`; base only for upstream OMP PRs.
+- **`kml93`**: Primary runtime branch; fork base containing custom changes and selected PI ports.
+- **`omp/pr--<name>`**: Upstream OMP PR, based on `main`.
+- **`pi/port--<name>`**: Selected PI port, based on `kml93`.
+- **`local/mod--<name>`**: Durable fork-local change, based on `kml93`.
+- **`omp/sync--<version>`**: Non-trivial integration of updated `main` into `kml93`.
 
-## Commit Conventions (Extended Conventional Commits)
+## Commit Conventions
 
 Format: `<type>(<scope>): <short imperative description>`
 
-- `port(pi): <desc>` : Porting or adapting a feature/module from `pi`.
-- `fix(omp): <desc>` : Bug fix in `omp` core.
-- `feat(custom): <desc>` : New personal capability or tweak.
-- `sync(omp): <desc>` : Merging upstream `omp` updates.
-- `sync(pi): <desc>` : Cherry-picking or syncing fixes from `pi`.
-- `refactor(<scope>): <desc>` : Internal reorganization.
-- `chore: <desc>` : Tooling, build, bun link, or dev environment changes.
+- `port(pi): <desc>`: Port or adaptation from PI.
+- `fix(omp): <desc>`: OMP core bug fix.
+- `feat(custom): <desc>`: Fork-local capability.
+- `sync(omp): <desc>`: OMP upstream integration.
+- `sync(pi): <desc>`: Selected PI fix synchronization.
+- `refactor(<scope>): <desc>`: Internal reorganization.
+- `chore: <desc>`: Tooling or environment change.
 
-## Decision Matrix
+## Invariants
 
-```text
-Task Intent
- ├── 1. Porting a feature from PI
- │    └── From `kml93` ➔ branch `pi/port--<name>` ➔ test ➔ merge into `kml93` ➔ delete branch.
- │    └── Trigger: Read `references/porting.md` for architectural mapping and porting patterns.
- │
- ├── 2. Upstream PR for official OMP
- │    └── From `main` (clean) ➔ branch `omp/pr--<name>` ➔ commit ➔ push & open PR on GitHub.
- │    └── Merge `omp/pr--<name>` into `kml93` to use immediately without waiting for upstream merge.
- │    └── Trigger: Read `references/pr-workflow.md` for PR lifecycle instructions.
- │
- ├── 3. Upstream OMP update available
- │    └── Checkout `main` ➔ `git merge upstream-omp/main --ff-only` ➔ push to `origin/main`.
- │    └── Checkout `kml93` ➔ `git merge main` ➔ test ➔ push to `origin/kml93`.
- │    └── Trigger: Read `references/sync.md` for conflict resolution and merge steps.
- │
- └── 4. Inspecting PI updates
-      └── `git fetch upstream-pi` ➔ review incoming log ➔ cherry-pick/port selectively.
-      └── Trigger: Read `references/sync.md` for selective tracking.
-```
+- NEVER commit custom work to `main`; keep fast-forward synchronization possible.
+- NEVER merge `upstream-pi/main`; inspect and port selected changes.
+- Verify runtime after every merge with the applicable smoke command.
 
-## Gotchas
-
-- **Never commit directly to `main`**: Any custom commit on `main` breaks fast-forward synchronization with `upstream-omp`.
-- **Never merge entire `upstream-pi/main`**: Full 3-way merge from `pi` will produce thousands of structural file conflicts because `omp` refactored the entire codebase into Rust native extensions and 58 modular directories.
-- **Always verify runtime after merges**: Run `omp --smoke-test` (or `bun packages/coding-agent/src/cli.ts --version`) to ensure native bindings and TypeScript types remain sound.
-- **Git forbids `:` in branch names**: write the conventional prefixes with `/` (`omp/pr--*`, `pi/port--*`).
-
-## Runtime
-
-Read `references/runtime.md` for dev setup, worktree testing, or dist usage.
-Dev setup uses `scripts/setup-minimum-runtime-dev.sh`.
+Dev runtime setup uses `scripts/setup-minimum-runtime-dev.sh`.
