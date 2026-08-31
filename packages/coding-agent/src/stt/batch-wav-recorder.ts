@@ -1,13 +1,9 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { getSpeechToTextCacheDir } from "@oh-my-pi/pi-utils";
+import { createWavHeader, encodePcm16, WAV_HEADER_BYTES } from "../tts/wav";
 
-const WAV_HEADER_BYTES = 44;
 const PCM16_BYTES_PER_SAMPLE = 2;
-const PCM16_FORMAT = 1;
-const PCM16_BITS_PER_SAMPLE = 16;
-const PCM16_MAX = 32_767;
-const PCM16_MIN = -32_768;
 const ACTIVE_RECORDING_MAX_AGE_MS = 24 * 60 * 60_000;
 const RECORDING_PATTERN = /^record-(\d+)-([0-9a-f-]+)\.wav$/;
 
@@ -69,7 +65,7 @@ export class BatchWavRecorder {
 
 	async finalize(): Promise<string> {
 		if (this.#closed) return this.#filePath;
-		const header = createWavHeader(this.#sampleCount);
+		const header = createWavHeader(this.#sampleCount, STT_SAMPLE_RATE);
 		await this.#handle.write(header, 0, header.byteLength, 0);
 		await this.#handle.close();
 		this.#closed = true;
@@ -110,41 +106,4 @@ function processIsRunning(pid: number): boolean {
 	} catch (error) {
 		return typeof error === "object" && error !== null && "code" in error && error.code === "EPERM";
 	}
-}
-
-function encodePcm16(samples: Float32Array): Uint8Array {
-	const buffer = new ArrayBuffer(samples.length * PCM16_BYTES_PER_SAMPLE);
-	const view = new DataView(buffer);
-	samples.forEach((sample, index) => {
-		const clamped = Math.max(-1, Math.min(1, sample));
-		const quantized = clamped < 0 ? Math.round(clamped * -PCM16_MIN) : Math.round(clamped * PCM16_MAX);
-		view.setInt16(index * PCM16_BYTES_PER_SAMPLE, quantized, true);
-	});
-	return new Uint8Array(buffer);
-}
-
-function createWavHeader(sampleCount: number): Uint8Array {
-	const dataBytes = sampleCount * PCM16_BYTES_PER_SAMPLE;
-	const buffer = new ArrayBuffer(WAV_HEADER_BYTES);
-	const view = new DataView(buffer);
-	writeAscii(view, 0, "RIFF");
-	view.setUint32(4, WAV_HEADER_BYTES - 8 + dataBytes, true);
-	writeAscii(view, 8, "WAVE");
-	writeAscii(view, 12, "fmt ");
-	view.setUint32(16, 16, true);
-	view.setUint16(20, PCM16_FORMAT, true);
-	view.setUint16(22, 1, true);
-	view.setUint32(24, STT_SAMPLE_RATE, true);
-	view.setUint32(28, STT_SAMPLE_RATE * PCM16_BYTES_PER_SAMPLE, true);
-	view.setUint16(32, PCM16_BYTES_PER_SAMPLE, true);
-	view.setUint16(34, PCM16_BITS_PER_SAMPLE, true);
-	writeAscii(view, 36, "data");
-	view.setUint32(40, dataBytes, true);
-	return new Uint8Array(buffer);
-}
-
-function writeAscii(view: DataView, offset: number, text: string): void {
-	Array.from(text).forEach((character, index) => {
-		view.setUint8(offset + index, character.charCodeAt(0));
-	});
 }
