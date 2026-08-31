@@ -32,6 +32,7 @@ Read the matching procedure before changing repository state:
 - PI port → `references/porting.md`
 - OMP/PI synchronization → `references/sync.md`
 - Running or testing another branch → `references/runtime.md`
+- Head-scoped PR review feedback → run `scripts/pr-feedback.ts <pr-number>` from the skill root (see `--help`)
 
 ## Remotes Architecture
 

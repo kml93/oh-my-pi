@@ -11,6 +11,12 @@ git fetch upstream-omp main:main
 git worktree add -b omp/pr--<short-description> ../omp-pr--<short-description> main
 ```
 
+Before building on the branch, make sure `kml93` already contains this `main`
+(sync per `references/sync.md`, or check `git merge-base --is-ancestor main
+kml93`). A merge imports the branch's full ancestry, not just the PR commit:
+merging a `main`-based PR while `kml93` lacks that `main` silently turns step 4
+into an unsolicited upstream sync.
+
 ## 2. Implement & Verify
 
 1. Make focused changes strictly for `omp`.
