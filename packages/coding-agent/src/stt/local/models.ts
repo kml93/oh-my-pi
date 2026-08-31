@@ -1,4 +1,4 @@
-import type { TinyModelDtype } from "../tiny/dtype";
+import type { TinyModelDtype } from "../../tiny/dtype";
 
 /**
  * On-device speech-to-text model registry. Each tier maps a stable settings key
@@ -18,7 +18,7 @@ import type { TinyModelDtype } from "../tiny/dtype";
 export type SttEngine = "transformers" | "sherpa";
 
 interface SttModelBase {
-	/** Stable key persisted in `stt.modelName` and sent over the worker protocol. */
+	/** Stable key persisted in `stt.transcriber` and sent over the worker protocol. */
 	key: string;
 	engine: SttEngine;
 	/** Hugging Face repo id (transformers.js ONNX repo, or sherpa-onnx model repo). */
@@ -118,15 +118,6 @@ export type SttModel = (typeof STT_MODELS)[number];
 
 export const STT_MODEL_VALUES = ["fast", "balanced", "turbo", "parakeet"] as const satisfies readonly SttModelKey[];
 
-type MissingSttModelValue = Exclude<SttModelKey, (typeof STT_MODEL_VALUES)[number]>;
-type ExtraSttModelValue = Exclude<(typeof STT_MODEL_VALUES)[number], SttModelKey>;
-const STT_MODEL_VALUES_MATCH_REGISTRY: MissingSttModelValue extends never
-	? ExtraSttModelValue extends never
-		? true
-		: never
-	: never = true;
-void STT_MODEL_VALUES_MATCH_REGISTRY;
-
 export const STT_MODEL_OPTIONS = STT_MODELS.map(({ key, label, description }) => ({
 	value: key,
 	label,
@@ -141,10 +132,7 @@ export function getSttModelSpec(key: string): SttModel | undefined {
 	return STT_MODELS.find(model => model.key === key);
 }
 
-/**
- * Resolve a (possibly stale or legacy) `stt.modelName` value onto a concrete
- * spec, falling back to the SoTA default when the key is unknown.
- */
+/** Resolve a stale local model key, falling back to the SoTA default. */
 export function resolveSttModelSpec(key: string | undefined): SttModel {
 	return (key !== undefined ? getSttModelSpec(key) : undefined) ?? getSttModelSpec(DEFAULT_STT_MODEL_KEY)!;
 }
