@@ -1,5 +1,6 @@
 import { type OAuthAccess, withOAuthAccess } from "@oh-my-pi/pi-ai";
 import { ProviderHttpError } from "@oh-my-pi/pi-ai/error";
+import { getCodexAttestationHeader } from "@oh-my-pi/pi-ai/providers/openai-codex-responses";
 import { wrapFetchForProxy } from "@oh-my-pi/pi-ai/utils/proxy";
 import {
 	applyCodexResidencyHeader,
@@ -9,6 +10,7 @@ import {
 	OPENAI_HEADERS,
 	URL_PATHS,
 } from "@oh-my-pi/pi-catalog/wire/codex";
+import { logger } from "@oh-my-pi/pi-utils";
 import { BATCH_RECORDING, BatchWavRecorder } from "../batch-wav-recorder";
 import type {
 	SttTranscriber,
@@ -16,12 +18,11 @@ import type {
 	SttTranscriptionCallbacks,
 	SttTranscriptionSession,
 } from "../contracts";
+import { CODEX_TRANSCRIBER_META } from "../types";
 
 const CODEX_STT = {
 	authProvider: "openai-codex",
-	id: "codex",
-	label: "OpenAI Codex",
-	description: "Cloud transcription using the configured OpenAI Codex account.",
+	...CODEX_TRANSCRIBER_META,
 	transcribeUrl: `${CODEX_BASE_URL}${URL_PATHS.TRANSCRIBE}`,
 	requestTimeoutMs: 90_000,
 	longRecordingWarning: `Speech recording has reached ${BATCH_RECORDING.warningMinutes} minutes and will continue until stopped.`,
@@ -39,7 +40,7 @@ interface CodexSttTranscriberOptions {
 
 class CodexTranscriptionSession implements SttTranscriptionSession {
 	readonly #access: OAuthAccess;
-	readonly #context: SttTranscriberContext;
+	readonly #context: SttTranscriberContext & { authStorage: NonNullable<SttTranscriberContext["authStorage"]> };
 	readonly #callbacks: SttTranscriptionCallbacks;
 	readonly #fetch: SttFetch;
 	readonly #wav: BatchWavRecorder;
@@ -49,7 +50,7 @@ class CodexTranscriptionSession implements SttTranscriptionSession {
 
 	constructor(
 		access: OAuthAccess,
-		context: SttTranscriberContext,
+		context: SttTranscriberContext & { authStorage: NonNullable<SttTranscriberContext["authStorage"]> },
 		callbacks: SttTranscriptionCallbacks,
 		fetchImpl: SttFetch,
 		wav: BatchWavRecorder,
@@ -134,6 +135,8 @@ class CodexTranscriptionSession implements SttTranscriptionSession {
 			"Content-Length": String(body.byteLength),
 		};
 		applyCodexResidencyHeader(headers, access.accessToken);
+		const attestation = await getCodexAttestationHeader(headers[OPENAI_HEADERS.ACCOUNT_ID]);
+		if (attestation) headers[OPENAI_HEADERS.ATTESTATION] = attestation;
 		const response = await this.#fetch(CODEX_STT.transcribeUrl, {
 			method: "POST",
 			headers,
@@ -142,17 +145,24 @@ class CodexTranscriptionSession implements SttTranscriptionSession {
 		});
 		const responseBody = await response.text();
 		if (!response.ok) {
+			logger.debug("OpenAI Codex transcription request failed", {
+				status: response.status,
+				body: responseBody,
+			});
 			throw new ProviderHttpError(
-				`OpenAI Codex transcription failed with status ${response.status}: ${responseBody.slice(0, 500)}`,
+				`OpenAI Codex transcription failed with status ${response.status}.`,
 				response.status,
-				{ headers: response.headers },
+				{
+					headers: response.headers,
+				},
 			);
 		}
 		let payload: unknown;
 		try {
 			payload = JSON.parse(responseBody);
 		} catch {
-			throw new Error(`OpenAI Codex transcription response was not JSON: ${responseBody.slice(0, 500)}`);
+			logger.debug("OpenAI Codex transcription returned non-JSON", { body: responseBody });
+			throw new Error("OpenAI Codex transcription response was not JSON.");
 		}
 		const transcription = payload as TranscriptionPayload;
 		if (typeof transcription.text === "string") return transcription.text;
@@ -175,14 +185,16 @@ export class CodexSttTranscriber implements SttTranscriber {
 		context: SttTranscriberContext,
 		callbacks: SttTranscriptionCallbacks,
 	): Promise<SttTranscriptionSession> {
-		const access = await context.authStorage.getOAuthAccess(CODEX_STT.authProvider, context.sessionId, {
+		const authStorage = context.authStorage;
+		if (!authStorage) throw new Error("OpenAI Codex authentication required. Run /login.");
+		const access = await authStorage.getOAuthAccess(CODEX_STT.authProvider, context.sessionId, {
 			signal: context.signal,
 		});
 		const accountId = access?.accountId ?? (access?.accessToken ? getCodexAccountId(access.accessToken) : undefined);
 		if (!access?.accessToken || !accountId) throw new Error("OpenAI Codex authentication required. Run /login.");
 		return new CodexTranscriptionSession(
 			{ ...access, accountId },
-			context,
+			{ ...context, authStorage },
 			callbacks,
 			this.#fetch,
 			await BatchWavRecorder.create(),

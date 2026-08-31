@@ -110,6 +110,16 @@ describe("STTController preflight", () => {
 		vi.restoreAllMocks();
 	});
 
+	it("starts a local transcriber without a model registry", async () => {
+		vi.spyOn(downloader, "isSttModelCached").mockResolvedValue(true);
+		vi.spyOn(downloader, "downloadSttModel").mockResolvedValue();
+		const createCapture = vi.fn().mockReturnValue({ stop: vi.fn() });
+		controller = new STTController({ createCapture });
+		await controller.toggle(makeEditor(), makeOptions());
+		expect(controller.state).toBe("recording");
+		expect(createCapture).toHaveBeenCalledTimes(1);
+	});
+
 	it("cached model: starts recording without awaiting the model load, warming it in the background", async () => {
 		const isCached = vi.spyOn(downloader, "isSttModelCached").mockResolvedValue(true);
 		// A warmup that never resolves would hang #ensureDeps if it were awaited;

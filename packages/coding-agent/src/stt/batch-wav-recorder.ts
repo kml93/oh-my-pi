@@ -8,6 +8,8 @@ const PCM16_FORMAT = 1;
 const PCM16_BITS_PER_SAMPLE = 16;
 const PCM16_MAX = 32_767;
 const PCM16_MIN = -32_768;
+const ACTIVE_RECORDING_MAX_AGE_MS = 24 * 60 * 60_000;
+const RECORDING_PATTERN = /^record-(\d+)-([0-9a-f-]+)\.wav$/;
 
 export const STT_SAMPLE_RATE = 16_000;
 export const BATCH_RECORDING = {
@@ -24,7 +26,7 @@ export class BatchWavRecorder {
 	#sampleCount = 0;
 	#closed = false;
 
-	private constructor(filePath: string, handle: fs.promises.FileHandle) {
+	constructor(filePath: string, handle: fs.promises.FileHandle) {
 		this.#filePath = filePath;
 		this.#handle = handle;
 	}
@@ -32,7 +34,8 @@ export class BatchWavRecorder {
 	static async create(): Promise<BatchWavRecorder> {
 		const cacheDir = getSpeechToTextCacheDir();
 		await fs.promises.mkdir(cacheDir, { recursive: true });
-		const filePath = path.join(cacheDir, `record-${crypto.randomUUID()}.wav`);
+		await reclaimStaleRecordings(cacheDir);
+		const filePath = path.join(cacheDir, `record-${process.pid}-${crypto.randomUUID()}.wav`);
 		const handle = await fs.promises.open(filePath, "wx", 0o600);
 		try {
 			await handle.write(new Uint8Array(WAV_HEADER_BYTES), 0, WAV_HEADER_BYTES, 0);
@@ -79,6 +82,32 @@ export class BatchWavRecorder {
 			this.#closed = true;
 		}
 		await fs.promises.rm(this.#filePath, { force: true });
+	}
+}
+
+async function reclaimStaleRecordings(cacheDir: string): Promise<void> {
+	const entries = await fs.promises.readdir(cacheDir, { withFileTypes: true });
+	await Promise.all(
+		entries.map(async entry => {
+			if (!entry.isFile()) return;
+			const match = RECORDING_PATTERN.exec(entry.name);
+			if (!match) return;
+			const filePath = path.join(cacheDir, entry.name);
+			const pid = Number(match[1]);
+			if (pid !== process.pid && processIsRunning(pid)) return;
+			const stat = await fs.promises.stat(filePath).catch(() => undefined);
+			if (!stat || (pid === process.pid && Date.now() - stat.mtimeMs <= ACTIVE_RECORDING_MAX_AGE_MS)) return;
+			await fs.promises.rm(filePath, { force: true }).catch(() => {});
+		}),
+	);
+}
+
+function processIsRunning(pid: number): boolean {
+	try {
+		process.kill(pid, 0);
+		return true;
+	} catch (error) {
+		return typeof error === "object" && error !== null && "code" in error && error.code === "EPERM";
 	}
 }
 

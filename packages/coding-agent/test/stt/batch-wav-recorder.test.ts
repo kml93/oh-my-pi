@@ -18,9 +18,38 @@ describe("BatchWavRecorder", () => {
 		expect(path.dirname(recorder.filePath)).toBe(getSpeechToTextCacheDir());
 		expect(await recorder.append(new Float32Array([0, 0.5, -0.5]))).toBe(false);
 		await recorder.finalize();
-		expect((await fs.promises.stat(recorder.filePath)).size).toBe(50);
+		const wav = new Uint8Array(await fs.promises.readFile(recorder.filePath));
+		const view = new DataView(wav.buffer, wav.byteOffset, wav.byteLength);
+		expect(new TextDecoder().decode(wav.subarray(0, 4))).toBe("RIFF");
+		expect(view.getUint32(4, true)).toBe(42);
+		expect(new TextDecoder().decode(wav.subarray(8, 12))).toBe("WAVE");
+		expect(new TextDecoder().decode(wav.subarray(12, 16))).toBe("fmt ");
+		expect(view.getUint32(16, true)).toBe(16);
+		expect(view.getUint16(20, true)).toBe(1);
+		expect(view.getUint16(22, true)).toBe(1);
+		expect(view.getUint32(24, true)).toBe(16_000);
+		expect(view.getUint32(28, true)).toBe(32_000);
+		expect(view.getUint16(32, true)).toBe(2);
+		expect(view.getUint16(34, true)).toBe(16);
+		expect(new TextDecoder().decode(wav.subarray(36, 40))).toBe("data");
+		expect(view.getUint32(40, true)).toBe(6);
+		expect([view.getInt16(44, true), view.getInt16(46, true), view.getInt16(48, true)]).toEqual([0, 16_384, -16_384]);
 		await recorder.dispose();
 		createdPaths.delete(recorder.filePath);
+	});
+
+	it("reclaims recordings abandoned by dead processes", async () => {
+		const cacheDir = getSpeechToTextCacheDir();
+		await fs.promises.mkdir(cacheDir, { recursive: true });
+		const abandonedPath = path.join(cacheDir, `record-2147483647-${crypto.randomUUID()}.wav`);
+		await Bun.write(abandonedPath, "private audio");
+		createdPaths.add(abandonedPath);
+		const recorder = await BatchWavRecorder.create();
+		createdPaths.add(recorder.filePath);
+		expect(await Bun.file(abandonedPath).exists()).toBe(false);
+		await recorder.dispose();
+		createdPaths.delete(recorder.filePath);
+		createdPaths.delete(abandonedPath);
 	});
 
 	it("warns once at the configured threshold without truncating subsequent audio", async () => {

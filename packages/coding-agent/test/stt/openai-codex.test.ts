@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
 import type { AuthStorage, OAuthAccess } from "@oh-my-pi/pi-ai";
+import { setCodexAttestationProvider } from "@oh-my-pi/pi-ai/providers/openai-codex-responses";
+import { CODEX_BASE_URL, OPENAI_HEADER_VALUES, OPENAI_HEADERS, URL_PATHS } from "@oh-my-pi/pi-catalog/wire/codex";
 import type { ModelRegistry } from "@oh-my-pi/pi-coding-agent/config/model-registry";
 import { Settings, settings } from "@oh-my-pi/pi-coding-agent/config/settings";
 import { CodexSttTranscriber, type SttTranscriberContext } from "@oh-my-pi/pi-coding-agent/stt";
@@ -11,7 +13,9 @@ const ACCESS: OAuthAccess = {
 	accountId: "account-id",
 };
 
-function makeContext(getOAuthAccess: SttTranscriberContext["authStorage"]["getOAuthAccess"]): SttTranscriberContext {
+function makeContext(
+	getOAuthAccess: NonNullable<SttTranscriberContext["authStorage"]>["getOAuthAccess"],
+): SttTranscriberContext {
 	const authStorage = {
 		hasAuth: vi.fn().mockReturnValue(true),
 		getOAuthAccess,
@@ -32,20 +36,38 @@ const callbacks = {
 };
 
 describe("CodexSttTranscriber", () => {
-	it("uses the Codex OAuth account selected for the agent session", async () => {
+	afterEach(() => {
+		setCodexAttestationProvider(undefined);
+	});
+	it("sends the Codex transcription wire contract for the selected OAuth account", async () => {
 		const getOAuthAccess = vi.fn().mockResolvedValue(ACCESS);
 		const fetchMock = vi
 			.fn()
 			.mockResolvedValue(new Response(JSON.stringify({ text: "transcribed" }), { status: 200 }));
 		const transcriber = new CodexSttTranscriber({ fetch: fetchMock });
-		const session = await transcriber.createSession(makeContext(getOAuthAccess), callbacks);
+		const context = makeContext(getOAuthAccess);
+		const session = await transcriber.createSession(context, callbacks);
 		session.pushAudio(new Float32Array([0.25, -0.25]));
 		await expect(session.stop()).resolves.toBe("transcribed");
-		expect(getOAuthAccess).toHaveBeenCalledTimes(1);
 		expect(getOAuthAccess).toHaveBeenCalledWith("openai-codex", "speech-session", {
 			signal: expect.any(AbortSignal),
 		});
-		expect(fetchMock).toHaveBeenCalledTimes(1);
+		const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+		expect(url).toBe(`${CODEX_BASE_URL}${URL_PATHS.TRANSCRIBE}`);
+		expect(init.method).toBe("POST");
+		expect(init.signal).toBeInstanceOf(AbortSignal);
+		const headers = init.headers as Record<string, string>;
+		expect(headers.Authorization).toBe(`Bearer ${ACCESS.accessToken}`);
+		expect(headers[OPENAI_HEADERS.ACCOUNT_ID]).toBe("account-id");
+		expect(headers[OPENAI_HEADERS.ORIGINATOR]).toBe(OPENAI_HEADER_VALUES.CODEX_DESKTOP.NAME);
+		expect(headers["User-Agent"]).toBe(OPENAI_HEADER_VALUES.CODEX_DESKTOP.USER_AGENT);
+		expect(headers["Content-Type"]).toMatch(/^multipart\/form-data; boundary=----codex-transcribe-/);
+		const body = init.body as Uint8Array;
+		expect(headers["Content-Length"]).toBe(String(body.byteLength));
+		const bodyText = new TextDecoder().decode(body);
+		expect(bodyText).toContain('Content-Disposition: form-data; name="file"; filename="codex.wav"');
+		expect(bodyText).toContain("Content-Type: audio/wav\r\n\r\nRIFF");
+		expect(bodyText).toContain("WAVEfmt ");
 		await session.dispose();
 	});
 
@@ -64,6 +86,22 @@ describe("CodexSttTranscriber", () => {
 		await expect(session.stop()).resolves.toBe("transcribed");
 		const init = fetchMock.mock.calls[0]?.[1] as { headers: Record<string, string> };
 		expect(init.headers["x-openai-internal-codex-residency"]).toBe("eu");
+		await session.dispose();
+	});
+
+	it("sends the current Codex DeviceCheck attestation", async () => {
+		setCodexAttestationProvider(async () => "attestation-envelope");
+		const fetchMock = vi
+			.fn()
+			.mockResolvedValue(new Response(JSON.stringify({ text: "transcribed" }), { status: 200 }));
+		const session = await new CodexSttTranscriber({ fetch: fetchMock }).createSession(
+			makeContext(vi.fn().mockResolvedValue(ACCESS)),
+			callbacks,
+		);
+		session.pushAudio(new Float32Array([0.25]));
+		await expect(session.stop()).resolves.toBe("transcribed");
+		const init = fetchMock.mock.calls[0]?.[1] as { headers: Record<string, string> };
+		expect(init.headers[OPENAI_HEADERS.ATTESTATION]).toBe("attestation-envelope");
 		await session.dispose();
 	});
 

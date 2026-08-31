@@ -1,7 +1,7 @@
 import type { AuthStorage } from "@oh-my-pi/pi-ai";
 
 export interface SttTranscriberContext {
-	authStorage: AuthStorage;
+	authStorage?: AuthStorage;
 	sessionId?: string;
 	language?: string;
 	signal: AbortSignal;

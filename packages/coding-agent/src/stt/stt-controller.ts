@@ -104,10 +104,6 @@ export class STTController {
 
 	async #start(editor: Editor, options: ToggleOptions): Promise<void> {
 		const modelRegistry = this.#modelRegistry;
-		if (!modelRegistry) {
-			options.showWarning("Speech transcription is unavailable in this session.");
-			return;
-		}
 		this.#editor = editor;
 		this.#committed = false;
 		this.#utterance = "";
@@ -121,7 +117,7 @@ export class STTController {
 		try {
 			const session = await transcriber.createSession(
 				{
-					authStorage: modelRegistry.authStorage,
+					authStorage: modelRegistry?.authStorage,
 					sessionId: this.#getSessionId(),
 					language: settings.get("stt.language") || undefined,
 					signal: this.#abort.signal,
