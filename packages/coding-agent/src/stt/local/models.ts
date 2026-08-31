@@ -1,4 +1,3 @@
-<<<<<<<< HEAD:packages/coding-agent/src/stt/local/models.ts
 import type { TinyModelDtype } from "../../tiny/dtype";
 
 /**
@@ -137,6 +136,3 @@ export function getSttModelSpec(key: string): SttModel | undefined {
 export function resolveSttModelSpec(key: string | undefined): SttModel {
 	return (key !== undefined ? getSttModelSpec(key) : undefined) ?? getSttModelSpec(DEFAULT_STT_MODEL_KEY)!;
 }
-========
-export * from "./local/models";
->>>>>>>> omp/pr--openai-codex-stt:packages/coding-agent/src/stt/models.ts
