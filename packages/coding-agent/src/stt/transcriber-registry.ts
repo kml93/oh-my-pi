@@ -4,15 +4,9 @@ import { LocalSttTranscriber } from "./local/transcriber";
 import { CodexSttTranscriber } from "./providers/codex";
 import { CODEX_TRANSCRIBER_META, type SttTranscriberDefinition } from "./types";
 
-export type { SttTranscriberId } from "./types";
 // Metadata (ids, options, defaults, guards) lives in ./types; re-exported here
 // so existing consumers keep one import site (mirrors web/search's provider.ts).
-export {
-	DEFAULT_STT_TRANSCRIBER_ID,
-	isSttTranscriberId,
-	STT_TRANSCRIBER_OPTIONS,
-	STT_TRANSCRIBER_VALUES,
-} from "./types";
+export * from "./types";
 
 const LOCAL_TRANSCRIBERS = STT_MODELS.map(
 	model =>
