@@ -16,6 +16,7 @@
 - Added Devin selector aliases for the native short and dotted model names, plus static SWE-1.6 seeds so the provider default resolves before credential-scoped discovery runs ([#8590](https://github.com/can1357/oh-my-pi/pull/8590) by [@will-bogusz](https://github.com/will-bogusz)).
 - Added optional `description`, `isNew`, `isBeta`, and `isRecommended` model metadata, populated from Devin's `GetCliModelConfigs` so discovered Cascade models keep the server's blurb and badges ([#8590](https://github.com/can1357/oh-my-pi/pull/8590) by [@will-bogusz](https://github.com/will-bogusz)).
 
+- Added shared Codex wire constants and residency-header handling for ChatGPT OAuth request integrations ([#10374](https://github.com/can1357/oh-my-pi/pull/10374) by [@kml93](https://github.com/kml93)).
 ### Fixed
 
 - Model-id revision parsing no longer mistakes parameter-count tokens for versions (`qwen3-32b` is generation 3, not 3.32), Fireworks' `p`-spelled Kimi ids classify as K2.6 (restoring their widened reasoning stream timeout), and Kimi K3's `reasoning_effort` remap now applies on any OpenAI-compatible host (LiteLLM, vLLM) instead of only census-listed providers.
