@@ -1,10 +1,18 @@
 import type { SttTranscriber } from "./contracts";
-import type { SttTranscriberDefinition } from "./definitions";
-import { DEFAULT_STT_MODEL_KEY, isSttModelKey, STT_MODELS, type SttModelKey } from "./local/models";
+import { DEFAULT_STT_MODEL_KEY, STT_MODELS, type SttModelKey } from "./local/models";
 import { LocalSttTranscriber } from "./local/transcriber";
 import { CodexSttTranscriber } from "./providers/codex";
+import { CODEX_TRANSCRIBER_META, type SttTranscriberDefinition } from "./types";
 
-export const DEFAULT_STT_TRANSCRIBER_ID = DEFAULT_STT_MODEL_KEY;
+export type { SttTranscriberId } from "./types";
+// Metadata (ids, options, defaults, guards) lives in ./types; re-exported here
+// so existing consumers keep one import site (mirrors web/search's provider.ts).
+export {
+	DEFAULT_STT_TRANSCRIBER_ID,
+	isSttTranscriberId,
+	STT_TRANSCRIBER_OPTIONS,
+	STT_TRANSCRIBER_VALUES,
+} from "./types";
 
 const LOCAL_TRANSCRIBERS = STT_MODELS.map(
 	model =>
@@ -17,25 +25,11 @@ const LOCAL_TRANSCRIBERS = STT_MODELS.map(
 );
 
 const CODEX_TRANSCRIBER = {
-	id: "codex",
-	label: "OpenAI Codex",
-	description: "Cloud transcription using the configured OpenAI Codex account.",
+	...CODEX_TRANSCRIBER_META,
 	create: () => new CodexSttTranscriber(),
-} as const satisfies SttTranscriberDefinition<"codex">;
+} as const satisfies SttTranscriberDefinition<typeof CODEX_TRANSCRIBER_META.id>;
 
 const STT_TRANSCRIBERS = [...LOCAL_TRANSCRIBERS, CODEX_TRANSCRIBER] as const;
-
-export type SttTranscriberId = SttModelKey | typeof CODEX_TRANSCRIBER.id;
-export const STT_TRANSCRIBER_VALUES = STT_TRANSCRIBERS.map(definition => definition.id);
-export const STT_TRANSCRIBER_OPTIONS = STT_TRANSCRIBERS.map(({ id, label, description }) => ({
-	value: id,
-	label,
-	description,
-}));
-
-export function isSttTranscriberId(value: string): value is SttTranscriberId {
-	return value === CODEX_TRANSCRIBER.id || isSttModelKey(value);
-}
 
 export function createSttTranscriber(id: string): SttTranscriber {
 	const definition = STT_TRANSCRIBERS.find(candidate => candidate.id === id);

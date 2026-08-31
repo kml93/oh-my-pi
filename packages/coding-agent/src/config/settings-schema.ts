@@ -14,11 +14,7 @@ import {
 	DEFAULT_COMPACTION_METHOD_ORDER,
 } from "../session/compaction-methods";
 import { STT_SUBMIT_TRIGGER_OPTIONS, STT_SUBMIT_TRIGGER_VALUES } from "../stt/submit-trigger";
-import {
-	DEFAULT_STT_TRANSCRIBER_ID,
-	STT_TRANSCRIBER_OPTIONS,
-	STT_TRANSCRIBER_VALUES,
-} from "../stt/transcriber-registry";
+import { DEFAULT_STT_TRANSCRIBER_ID, STT_TRANSCRIBER_OPTIONS, STT_TRANSCRIBER_VALUES } from "../stt/types";
 import { AUTO_THINKING, getConfiguredThinkingLevelMetadata, getThinkingLevelMetadata } from "../thinking";
 import {
 	TINY_MODEL_DEVICE_DEFAULT,
