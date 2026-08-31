@@ -52,6 +52,22 @@ describe("BatchWavRecorder", () => {
 		createdPaths.delete(abandonedPath);
 	});
 
+	it("reclaims expired recordings whose PID has been reused", async () => {
+		const cacheDir = getSpeechToTextCacheDir();
+		await fs.promises.mkdir(cacheDir, { recursive: true });
+		const abandonedPath = path.join(cacheDir, `record-${process.pid}-${crypto.randomUUID()}.wav`);
+		await Bun.write(abandonedPath, "private audio");
+		const expired = new Date(Date.now() - 25 * 60 * 60_000);
+		await fs.promises.utimes(abandonedPath, expired, expired);
+		createdPaths.add(abandonedPath);
+		const recorder = await BatchWavRecorder.create();
+		createdPaths.add(recorder.filePath);
+		expect(await Bun.file(abandonedPath).exists()).toBe(false);
+		await recorder.dispose();
+		createdPaths.delete(recorder.filePath);
+		createdPaths.delete(abandonedPath);
+	});
+
 	it("warns once at the configured threshold without truncating subsequent audio", async () => {
 		const recorder = await BatchWavRecorder.create();
 		createdPaths.add(recorder.filePath);

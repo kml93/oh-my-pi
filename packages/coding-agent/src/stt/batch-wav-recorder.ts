@@ -94,9 +94,10 @@ async function reclaimStaleRecordings(cacheDir: string): Promise<void> {
 			if (!match) return;
 			const filePath = path.join(cacheDir, entry.name);
 			const pid = Number(match[1]);
-			if (pid !== process.pid && processIsRunning(pid)) return;
 			const stat = await fs.promises.stat(filePath).catch(() => undefined);
-			if (!stat || (pid === process.pid && Date.now() - stat.mtimeMs <= ACTIVE_RECORDING_MAX_AGE_MS)) return;
+			if (!stat) return;
+			const expired = Date.now() - stat.mtimeMs > ACTIVE_RECORDING_MAX_AGE_MS;
+			if (!expired && (pid === process.pid || processIsRunning(pid))) return;
 			await fs.promises.rm(filePath, { force: true }).catch(() => {});
 		}),
 	);
