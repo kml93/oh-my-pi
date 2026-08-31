@@ -2,12 +2,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
+import type { ModelRegistry } from "@oh-my-pi/pi-coding-agent/config/model-registry";
 import { Settings, settings } from "@oh-my-pi/pi-coding-agent/config/settings";
 import * as asrClient from "@oh-my-pi/pi-coding-agent/stt/asr-client";
 import * as downloader from "@oh-my-pi/pi-coding-agent/stt/downloader";
 import { STTController } from "@oh-my-pi/pi-coding-agent/stt/stt-controller";
 import { getTinyModelsCacheDir, removeWithRetries, setAgentDir } from "@oh-my-pi/pi-utils";
-import { beginSettingsTest, restoreSettingsTestState, type SettingsTestState } from "./helpers/settings-test-state";
+import { beginSettingsTest, restoreSettingsTestState, type SettingsTestState } from "../helpers/settings-test-state";
 
 const WHISPER_BASE_REPO = "onnx-community/whisper-base";
 const PARAKEET_REPO = "csukuangfj/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8";
@@ -63,6 +64,8 @@ describe("isSttModelCached completeness", () => {
 	});
 });
 
+const modelRegistry = { authStorage: {} } as unknown as ModelRegistry;
+
 describe("STTController preflight", () => {
 	let state: SettingsTestState | undefined;
 	let controller: STTController | undefined;
@@ -92,7 +95,7 @@ describe("STTController preflight", () => {
 	beforeEach(async () => {
 		state = beginSettingsTest();
 		await Settings.init({ inMemory: true });
-		settings.set("stt.modelName", "fast");
+		settings.set("stt.transcriber", "fast");
 		vi.spyOn(asrClient.sttClient, "startStream").mockReturnValue({
 			pushAudio: vi.fn(),
 			stop: vi.fn().mockResolvedValue(""),
@@ -114,7 +117,7 @@ describe("STTController preflight", () => {
 		const download = vi.spyOn(downloader, "downloadSttModel").mockReturnValue(new Promise<void>(() => {}));
 
 		const editor = makeEditor();
-		controller = new STTController(() => ({ stop: vi.fn() }));
+		controller = new STTController({ createCapture: () => ({ stop: vi.fn() }), modelRegistry });
 		const options = makeOptions();
 		await controller.toggle(editor, options);
 
@@ -142,13 +145,13 @@ describe("STTController preflight", () => {
 		});
 
 		const editor = makeEditor();
-		controller = new STTController(() => ({ stop: vi.fn() }));
+		controller = new STTController({ createCapture: () => ({ stop: vi.fn() }), modelRegistry });
 		const options = makeOptions();
 		await controller.toggle(editor, options);
 
 		expect(controller.state).toBe("recording");
-		// Foreground path passes a progress callback (2 args) and surfaces it.
-		expect(download.mock.calls[0]).toHaveLength(2);
+		// Foreground path passes progress and cancellation options.
+		expect(download.mock.calls[0]).toHaveLength(3);
 		expect(options.showStatus).toHaveBeenCalledWith("Downloading speech model Whisper base (42%)");
 		// Status was written, so the line is cleared at the end.
 		expect(options.showStatus).toHaveBeenLastCalledWith("");
@@ -159,13 +162,13 @@ describe("STTController preflight", () => {
 		vi.spyOn(downloader, "downloadSttModel").mockReturnValue(new Promise<void>(() => {}));
 
 		const editor = makeEditor();
-		controller = new STTController(() => ({ stop: vi.fn() }));
+		controller = new STTController({ createCapture: () => ({ stop: vi.fn() }), modelRegistry });
 		await controller.toggle(editor, makeOptions());
 		expect(controller.state).toBe("recording");
 		expect(isCached).toHaveBeenLastCalledWith("fast");
 
 		// Switch the model, then stop and re-start the gesture.
-		settings.set("stt.modelName", "turbo");
+		settings.set("stt.transcriber", "turbo");
 		await controller.toggle(editor, makeOptions()); // recording -> idle
 		expect(controller.state).toBe("idle");
 		await controller.toggle(editor, makeOptions()); // idle -> recording
@@ -181,9 +184,12 @@ describe("STTController preflight", () => {
 		const stopCapture = vi.fn();
 		const editor = makeEditor();
 		const options = makeOptions();
-		controller = new STTController(callback => {
-			onAudio = callback;
-			return { stop: stopCapture };
+		controller = new STTController({
+			createCapture: callback => {
+				onAudio = callback;
+				return { stop: stopCapture };
+			},
+			modelRegistry,
 		});
 		await controller.toggle(editor, options);
 
