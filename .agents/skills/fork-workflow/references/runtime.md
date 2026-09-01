@@ -32,13 +32,13 @@ cost zero extra disk (validated: same inode, `nlink=2`):
 
 ```bash
 main_checkout=$(git rev-parse --show-toplevel)
-git worktree add --detach ../omp-test <branch-or-sha>
-cd ../omp-test
+git worktree add --detach .worktrees/omp-test <branch-or-sha>
+cd .worktrees/omp-test
 bun install --production --filter @oh-my-pi/pi-coding-agent
 bun run gen:tool-views   # prod install skips this postinstall; CLI fails without it
 ln "$main_checkout/packages/natives/native/"*.node packages/natives/native/
 sh packages/coding-agent/scripts/omp --smoke-test
-# cleanup: git worktree remove --force ../omp-test
+# cleanup: git worktree remove --force .worktrees/omp-test
 ```
 
 `ln` (hard link) is safe: `.node` files are only read, never modified in

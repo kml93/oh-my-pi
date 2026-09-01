@@ -26,8 +26,8 @@ git push origin kml93
 Conflicts or substantial validation expected? Isolate the integration:
 
 ```bash
-git worktree add -b omp/sync--<version> ../omp-sync--<version> kml93
-git -C ../omp-sync--<version> merge main
+git worktree add -b omp/sync--<version> .worktrees/omp-sync--<version> kml93
+git -C .worktrees/omp-sync--<version> merge main
 ```
 
 Resolve conflicts by preserving OMP architectural upgrades and fork-local hooks. Verify, commit with `sync(omp): ...`, then merge the sync branch into the primary `kml93` checkout.

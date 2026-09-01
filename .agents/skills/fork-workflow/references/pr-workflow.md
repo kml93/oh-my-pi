@@ -8,7 +8,7 @@ Keep the primary checkout on `kml93`. Update `main`, then create the PR branch a
 
 ```bash
 git fetch upstream-omp main:main
-git worktree add -b omp/pr--<short-description> ../omp-pr--<short-description> main
+git worktree add -b omp/pr--<short-description> .worktrees/omp-pr--<short-description> main
 ```
 
 Before building on the branch, make sure `kml93` already contains this `main`

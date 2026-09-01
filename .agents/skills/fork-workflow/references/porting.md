@@ -25,7 +25,7 @@
 1. Fetch PI and create a worktree from `kml93`:
    ```bash
    git fetch upstream-pi
-   git worktree add -b pi/port--<feature-name> ../pi-port--<feature-name> kml93
+   git worktree add -b pi/port--<feature-name> .worktrees/pi-port--<feature-name> kml93
    ```
 2. Inspect source without merging PI history:
    ```bash
@@ -43,6 +43,6 @@
    git commit -m "port(pi): integrate <feature-name>"
    git -C <primary-checkout> merge pi/port--<feature-name>
    git -C <primary-checkout> push origin kml93
-   git worktree remove ../pi-port--<feature-name>
+   git worktree remove .worktrees/pi-port--<feature-name>
    git branch -d pi/port--<feature-name>
    ```
