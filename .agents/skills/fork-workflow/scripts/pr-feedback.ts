@@ -2,11 +2,12 @@
 /**
  * Actionable PR review feedback filtered with GitHub's own thread states.
  *
- * Prints unresolved review threads, current-head reviews, conversation
- * comments, and failed checks for a pull request. Resolved and outdated
- * threads are counted rather than dumped, so output stays proportional to
- * the remaining work instead of the review history. Complements
- * `read pr://<owner>/<repo>/<n>`, which returns the full history.
+ * Prints unresolved review threads (with diff hunks), current-head human
+ * reviews, conversation comments, and failed checks for a pull request.
+ * Resolved and outdated threads are counted in the status line only, so
+ * output stays proportional to the remaining work instead of the review
+ * history. Complements `read pr://<owner>/<repo>/<n>`, which returns the
+ * full history.
  *
  * Requires: gh (authenticated), bun.
  */
@@ -15,11 +16,11 @@ import { parseArgs } from "node:util";
 
 const USAGE = `Usage: bun pr-feedback.ts <pr-number> [options]
 
-Print unresolved PR review feedback (threads, reviews, comments, failed checks).
+Print unresolved PR review feedback (threads with diff hunks, reviews, comments, failed checks).
 
 Options:
   --repo owner/name   Repository (default: can1357/oh-my-pi)
-  --limit-chars N     Truncate bodies to N characters (default: 400)
+  --limit-chars N     Truncate bodies to N characters (default: full text)
   --show-outdated     Also print unresolved outdated threads, one line each
   --help              Show this help
 
@@ -35,7 +36,7 @@ Examples:
 interface Flags {
   pr: number;
   repo: string;
-  limitChars: number;
+  limitChars?: number;
   showOutdated: boolean;
 }
 
@@ -52,7 +53,7 @@ interface ThreadCommentNode {
   body: string;
   path: string | null;
   line: number | null;
-  url: string;
+  diffHunk: string | null;
 }
 
 interface ThreadNode {
@@ -120,7 +121,7 @@ const QUERY = `query($owner: String!, $name: String!, $number: Int!) {
               body
               path
               line
-              url
+              diffHunk
             }
           }
         }
@@ -169,6 +170,10 @@ const FAILED_CHECK_CONCLUSIONS: Record<string, true> = {
 };
 const FAILED_STATUS_STATES: Record<string, true> = { FAILURE: true, ERROR: true };
 const BOT_AUTHOR = /bot|codex|roboomp/i;
+const SUB_TAGS = /<\/?sub>/g;
+const MARKDOWN_IMAGE = /!\[[^\]]*\]\([^)]*\)/g;
+const BADGE_SEVERITY = /!\[(\w+) Badge\]/;
+const USEFUL_LINE = /^Useful\? React with .*$/;
 
 const fail = (message: string, code: number): never => {
   console.error(`Error: ${message}\n`);
@@ -192,36 +197,72 @@ const parseFlags = (argv: string[]): Flags => {
       console.log(USAGE);
       process.exit(0);
     }
-    if (positionals.length !== 1 || !/^\d+$/.test(positionals[0] ?? "")) {
+    const positional = positionals[0];
+    if (positionals.length !== 1 || positional === undefined || !/^\d+$/.test(positional)) {
       fail("exactly one PR number is required", 2);
     }
-    const limitChars = values["limit-chars"] === undefined ? 400 : Number.parseInt(values["limit-chars"], 10);
-    if (!Number.isFinite(limitChars) || limitChars < 1) fail("--limit-chars expects a positive integer", 2);
-    const repo = values.repo ?? "can1357/oh-my-pi";
+    let repo = "can1357/oh-my-pi";
+    if (values.repo !== undefined) repo = values.repo;
     if (!/^[^/\s]+\/[^/\s]+$/.test(repo)) fail("--repo expects owner/name", 2);
+    const limitRaw = values["limit-chars"];
+    let limitChars: number | undefined;
+    if (limitRaw !== undefined) limitChars = Number.parseInt(limitRaw, 10);
+    if (limitChars !== undefined && (!Number.isFinite(limitChars) || limitChars < 1)) {
+      fail("--limit-chars expects a positive integer", 2);
+    }
     return {
-      pr: Number.parseInt(positionals[0], 10),
+      pr: Number.parseInt(positional, 10),
       repo,
       limitChars,
       showOutdated: values["show-outdated"] === true,
     };
   } catch (error) {
-    return fail(error instanceof Error ? error.message : String(error), 2);
+    let message = String(error);
+    if (error instanceof Error) message = error.message;
+    return fail(message, 2);
   }
 };
 
-const truncate = (text: string, limit: number): string => {
-  const chars = [...text.trim()];
-  return chars.length <= limit ? chars.join("") : `${chars.slice(0, limit).join("")}…`;
+interface SanitizedBody {
+  severity: string | null;
+  title: string;
+  rest: string;
+}
+
+const sanitizeBody = (raw: string): SanitizedBody => {
+  const captured = raw.match(BADGE_SEVERITY)?.[1];
+  let severity: string | null = null;
+  if (captured !== undefined) severity = captured;
+  const lines = raw
+    .replaceAll(SUB_TAGS, "")
+    .replaceAll(MARKDOWN_IMAGE, "")
+    .split("\n")
+    .filter(line => !USEFUL_LINE.test(line.trim()))
+    .map(line => line.trim())
+    .filter(line => line !== "");
+  const firstLine = lines[0];
+  let title = "";
+  if (firstLine !== undefined) {
+    title = firstLine.replace(/^\*\*/, "").replace(/\*\*$/, "").replace(/\s+/g, " ").trim();
+  }
+  const rest = lines.slice(1).join("\n");
+  return { severity, title, rest };
 };
 
-const indented = (text: string, limit: number): string =>
-  truncate(text, limit)
-    .split("\n")
-    .map(line => `  ${line.trim()}`)
-    .join("\n");
 
+const optionalText = (value: string | null | undefined): string => {
+  if (value === null || value === undefined) return "";
+  return value;
+};
 const author = (node: { author: { login: string } | null }): string => node.author?.login ?? "ghost";
+
+const location = (comment: ThreadCommentNode): string => {
+  let path = "?";
+  if (comment.path !== null) path = comment.path;
+  let line = "?";
+  if (comment.line !== null) line = String(comment.line);
+  return `${path}:${line}`;
+};
 
 const fetchPullRequest = (flags: Flags): PullRequestNode => {
   const [owner, name] = flags.repo.split("/");
@@ -252,99 +293,158 @@ const fetchPullRequest = (flags: Flags): PullRequestNode => {
   return pullRequest;
 };
 
-const replySuffix = (count: number): string => (count === 1 ? "y" : "ies");
+class PrFeedbackReport {
+  readonly pullRequest: PullRequestNode;
+  readonly flags: Flags;
 
-const renderThread = (thread: ThreadNode, flags: Flags): void => {
-  const [first, ...replies] = thread.comments.nodes;
-  if (!first) return;
-  console.log(`${first.path ?? "?"}:${first.line ?? "?"} — ${author(first)}`);
-  console.log(indented(first.body, flags.limitChars));
-  if (replies.length) console.log(`  (+${replies.length} repl${replySuffix(replies.length)})`);
-};
-
-const renderOutdatedThread = (thread: ThreadNode): void => {
-  const first = thread.comments.nodes[0];
-  if (!first) return;
-  console.log(`  ${first.path ?? "?"}:${first.line ?? "?"} — ${truncate(first.body, 120)}`);
-};
-
-const renderCurrentThreads = (threads: ThreadNode[], flags: Flags): void => {
-  const current = threads.filter(thread => !thread.isResolved && !thread.isOutdated);
-  if (!current.length) return;
-  console.log(`## Open inline threads (current): ${current.length}`);
-  current.forEach(thread => renderThread(thread, flags));
-};
-
-const renderOutdatedThreads = (threads: ThreadNode[], flags: Flags): void => {
-  const outdated = threads.filter(thread => !thread.isResolved && thread.isOutdated);
-  if (!outdated.length) return;
-  console.log(`## Open but outdated: ${outdated.length} hidden (use --show-outdated)`);
-  if (!flags.showOutdated) return;
-  outdated.forEach(renderOutdatedThread);
-};
-
-const renderResolvedCount = (threads: ThreadNode[]): void => {
-  const resolved = threads.filter(thread => thread.isResolved);
-  if (!resolved.length) return;
-  console.log(`## Resolved: ${resolved.length} (excluded)`);
-};
-
-const renderReview = (review: ReviewNode, flags: Flags): void => {
-  console.log(`${review.state} ${author(review)}`);
-  if (BOT_AUTHOR.test(author(review))) return;
-  console.log(indented(review.body, Math.min(flags.limitChars, 300)));
-};
-
-const renderReviews = (reviews: ReviewNode[], head: string, flags: Flags): void => {
-  const current = reviews.filter(review => !review.commit || review.commit.oid === head);
-  if (!current.length) return;
-  console.log(`## Reviews on current head: ${current.length}`);
-  current.forEach(review => renderReview(review, flags));
-};
-
-const renderConversation = (comments: IssueCommentNode[], flags: Flags): void => {
-  if (!comments.length) return;
-  console.log(`## Conversation: ${comments.length}`);
-  comments.forEach(comment => {
-    console.log(`${author(comment)} — ${comment.createdAt}`);
-    console.log(indented(comment.body, flags.limitChars));
-  });
-};
-
-const isFailedContext = (context: StatusContextNode): boolean => {
-  if (context.__typename === "CheckRun") return (context.conclusion ?? "") in FAILED_CHECK_CONCLUSIONS;
-  return (context.state ?? "") in FAILED_STATUS_STATES;
-};
-
-const contextLabel = (context: StatusContextNode): string =>
-  context.__typename === "CheckRun" ? context.name ?? "?" : context.context ?? "?";
-
-const contextUrl = (context: StatusContextNode): string =>
-  context.__typename === "CheckRun" ? context.detailsUrl ?? "" : context.targetUrl ?? "";
-
-const renderChecks = (pullRequest: PullRequestNode): void => {
-  const [lastCommit] = pullRequest.commits.nodes;
-  if (!lastCommit || lastCommit.commit.oid !== pullRequest.headRefOid) {
-    console.log("## Checks: unknown (head commit not found in rollup)");
-    return;
+  constructor(pullRequest: PullRequestNode, flags: Flags) {
+    this.pullRequest = pullRequest;
+    this.flags = flags;
   }
-  const contexts = lastCommit.commit.statusCheckRollup?.contexts.nodes ?? [];
-  const failed = contexts.filter(isFailedContext);
-  if (!failed.length) {
-    console.log("## Checks: ok");
-    return;
+
+  render(): void {
+    console.log(this.#header());
+    console.log("");
+    this.#threads(false, false).forEach(thread => this.#renderThread(thread));
+    if (this.flags.showOutdated) this.#threads(false, true).forEach(thread => this.#renderOutdated(thread));
+    this.#renderHumanReviews();
+    this.#renderConversation();
   }
-  console.log(`## Checks: ${failed.length} failed`);
-  failed.forEach(context => console.log(`FAILED ${contextLabel(context)} ${contextUrl(context)}`.trimEnd()));
-};
+
+  #threads(isResolved: boolean, isOutdated: boolean): ThreadNode[] {
+    return this.pullRequest.reviewThreads.nodes.filter(
+      thread => thread.isResolved === isResolved && thread.isOutdated === isOutdated,
+    );
+  }
+
+  #header(): string {
+    const open = this.#threads(false, false).length;
+    const outdated = this.#threads(false, true).length;
+    const resolved = this.#threads(true, false).length + this.#threads(true, true).length;
+    const suffixes: string[] = [];
+    if (outdated > 0 && this.flags.showOutdated) suffixes.push(`, ${outdated} outdated`);
+    if (outdated > 0 && !this.flags.showOutdated) suffixes.push(`, ${outdated} outdated (--show-outdated)`);
+    if (resolved > 0) suffixes.push(`, ${resolved} resolved`);
+    return `# ${this.flags.repo}#${this.flags.pr} @ ${this.pullRequest.headRefOid.slice(0, 9)} — ${open} open${suffixes.join("")}, ${this.#checksSummary()}`;
+  }
+
+  #checksSummary(): string {
+    const [lastCommit] = this.pullRequest.commits.nodes;
+    if (!lastCommit || lastCommit.commit.oid !== this.pullRequest.headRefOid) return "checks unknown";
+    const rollup = lastCommit.commit.statusCheckRollup;
+    let contexts: StatusContextNode[] = [];
+    if (rollup !== null) contexts = rollup.contexts.nodes;
+    const failed = contexts.filter(context => {
+      const isCheckRun = context.__typename === "CheckRun";
+      const conclusion = optionalText(context.conclusion);
+      const state = optionalText(context.state);
+      if (isCheckRun) return conclusion in FAILED_CHECK_CONCLUSIONS;
+      return state in FAILED_STATUS_STATES;
+    });
+    if (!failed.length) return "checks ok";
+    const parts = failed.map(context => {
+      const isCheckRun = context.__typename === "CheckRun";
+      let label = optionalText(context.name);
+      let url = optionalText(context.detailsUrl);
+      if (!isCheckRun) {
+        label = optionalText(context.context);
+        url = optionalText(context.targetUrl);
+      }
+      if (label === "") label = "?";
+      return `${label} ${url}`.trim();
+    });
+    return `checks FAILED: ${parts.join(", ")}`;
+  }
+
+  #renderThread(thread: ThreadNode): void {
+    const [first, ...replies] = thread.comments.nodes;
+    if (!first) return;
+    const { severity, title, rest } = sanitizeBody(first.body);
+    let tag = "";
+    if (severity !== null) tag = ` · ${severity}`;
+    console.log(`## ${location(first)} — ${title} [${author(first)}${tag}]`);
+    if (rest !== "") console.log(this.#indented(rest));
+    if (first.diffHunk !== null) {
+      console.log(`  diff:\n${this.#indented(this.#diffWindow(first.diffHunk, first.line))}`);
+    }
+    let replyWord = "replies";
+    if (replies.length === 1) replyWord = "reply";
+    if (replies.length > 0) console.log(`  (+${replies.length} ${replyWord})`);
+    console.log("");
+  }
+
+  #renderOutdated(thread: ThreadNode): void {
+    const first = thread.comments.nodes[0];
+    if (!first) return;
+    console.log(`  ${location(first)} — ${sanitizeBody(first.body).title}`);
+  }
+
+  #renderHumanReviews(): void {
+    const humans = this.pullRequest.reviews.nodes.filter(
+      review =>
+        (!review.commit || review.commit.oid === this.pullRequest.headRefOid) &&
+        !BOT_AUTHOR.test(author(review)),
+    );
+    if (!humans.length) return;
+    console.log(`## Reviews on current head: ${humans.length}`);
+    humans.forEach(review => {
+      console.log(`### ${review.state} — ${author(review)}`);
+      console.log(this.#indented(review.body));
+      console.log("");
+    });
+  }
+
+  #renderConversation(): void {
+    const comments = this.pullRequest.comments.nodes;
+    if (!comments.length) return;
+    console.log(`## Conversation: ${comments.length}`);
+    comments.forEach(comment => {
+      console.log(`### ${author(comment)} — ${comment.createdAt}`);
+      console.log(this.#indented(comment.body));
+      console.log("");
+    });
+  }
+
+  #indented(text: string): string {
+    let bounded = text;
+    if (this.flags.limitChars !== undefined) {
+      bounded = [...text.trim()].slice(0, this.flags.limitChars).join("");
+    }
+    return bounded
+      .split("\n")
+      .map(line => `  ${line.replace(/\t/g, "  ").trimEnd()}`)
+      .join("\n");
+  }
+
+  /** Crop the hunk to a few lines around the commented line, like the
+   * github.com comment bubble; falls back to the full hunk when the line
+   * cannot be located (null line, hunk header drift). */
+  #diffWindow(hunk: string, line: number | null): string {
+    if (line === null) return hunk;
+    const lines = hunk.split("\n");
+    const header = lines.shift();
+    if (header === undefined) return hunk;
+    const matched = header.match(/\+(\d+)/);
+    let start = Number.NaN;
+    if (matched !== null && matched[1] !== undefined) start = Number(matched[1]);
+    if (!Number.isFinite(start)) return hunk;
+    let current = start;
+    const entries = lines.reduce<Array<{ text: string; no: number }>>((acc, diffLine) => {
+      if (diffLine.startsWith("\\")) return acc;
+      if (diffLine.startsWith("-")) {
+        acc.push({ text: diffLine, no: -1 });
+        return acc;
+      }
+      acc.push({ text: diffLine, no: current });
+      current++;
+      return acc;
+    }, []);
+    const index = entries.findIndex(entry => entry.no === line);
+    if (index === -1) return hunk;
+    const windowEntries = entries.slice(Math.max(0, index - 3), index + 4).map(entry => entry.text);
+    return [header, ...windowEntries].join("\n");
+  }
+}
 
 const flags = parseFlags(process.argv.slice(2));
-const pullRequest = fetchPullRequest(flags);
-console.log(`# ${flags.repo}#${flags.pr} @ ${pullRequest.headRefOid.slice(0, 9)}`);
-console.log("");
-renderCurrentThreads(pullRequest.reviewThreads.nodes, flags);
-renderOutdatedThreads(pullRequest.reviewThreads.nodes, flags);
-renderResolvedCount(pullRequest.reviewThreads.nodes);
-renderReviews(pullRequest.reviews.nodes, pullRequest.headRefOid, flags);
-renderConversation(pullRequest.comments.nodes, flags);
-renderChecks(pullRequest);
+new PrFeedbackReport(fetchPullRequest(flags), flags).render();
