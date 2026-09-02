@@ -1,6 +1,6 @@
-# Native `?feedback=open` filter for `pr://` URLs
+# Native `?feedback=unresolved` filter for `pr://` URLs
 
-Status: DORMANT idea (fork-local, 2026-08-31)
+Status: DORMANT idea (upstream-PR candidate, 2026-08-31)
 Owner: kml93
 Replaces when shipped: `.agents/skills/fork-workflow/scripts/pr-feedback.ts` + its `SKILL.md` line
 
@@ -17,7 +17,7 @@ Opt-in filter on the internal `pr://` URL reader, additive and default-neutral
 (mirrors the existing `?state=` / `?comments=` params):
 
 ```
-read pr://<owner>/<repo>/<n>?feedback=open
+read pr://<owner>/<repo>/<n>?feedback=unresolved
 ```
 
 ## Semantics — three drawers
@@ -28,7 +28,7 @@ GitHub review threads (GraphQL `pullRequest.reviewThreads`) carry two flags:
 - `isOutdated` — GitHub auto-marks threads whose target line moved on a later
   push (automatic, but does NOT assert the point was addressed).
 
-The `open` view classifies:
+The `unresolved` view classifies:
 
 1. resolved threads -> excluded (explicit human decision);
 2. unresolved + current (`!isOutdated`) -> full body (the actionable part);
