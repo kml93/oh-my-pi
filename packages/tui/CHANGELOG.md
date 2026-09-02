@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Avoid inserting a trailing space when auto-completing directory paths with `@`.
+
 ## [18.1.3] - 2026-09-02
 
 ### Fixed
