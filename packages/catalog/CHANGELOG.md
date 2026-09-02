@@ -5,6 +5,17 @@
 ### Added
 
 - Added shared Codex wire constants and residency-header handling for ChatGPT OAuth request integrations ([#10374](https://github.com/can1357/oh-my-pi/pull/10374) by [@kml93](https://github.com/kml93)).
+- Added support for computer-use capabilities in model configurations
+
+### Changed
+
+- Updated GitHub Copilot API version to 2026-08-01
+- Reduced input cost for minimax/minimax-m2 model
+
+### Fixed
+
+- GitHub Copilot discovery now uses the Copilot CLI identity so account-eligible enterprise and experimental models are returned
+- Discovered Bedrock-style `mistral.mixtral-*` models no longer abort startup with an ambiguous family classification ([#10598](https://github.com/can1357/oh-my-pi/issues/10598)).
 
 ## [18.1.4] - 2026-09-02
 
