@@ -5,6 +5,7 @@
 ### Added
 
 - Added an XDG-aware speech-to-text cache directory helper for recorded audio ([#10374](https://github.com/can1357/oh-my-pi/pull/10374) by [@kml93](https://github.com/kml93)).
+
 ## [18.1.3] - 2026-09-02
 
 ### Fixed
