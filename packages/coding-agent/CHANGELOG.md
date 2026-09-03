@@ -7,6 +7,8 @@
 - Added configurable shortcuts to open settings and cycle the session-only tool approval mode.
 - Added `injectV1: false` option to `openai-models-list` discovery to fetch the model list from `{baseUrl}/models` without injecting `/v1`, for gateways that root their OpenAI-compatible surface at a versioned URL (e.g. `https://api.opper.ai/v3/compat`) where the `/v1`-injected endpoint returns only a small subset.
 - Speech-to-text can now use a configured OpenAI Codex account by selecting OpenAI Codex as the speech transcriber ([#10374](https://github.com/can1357/oh-my-pi/pull/10374) by [@kml93](https://github.com/kml93)).
+- File mentions now accept line selectors such as `@src/app.ts:40-80` and `@src/app.ts:1-5,20-30`, injecting only the requested lines into the prompt.
+
 ### Changed
 
 - Removed incorrect retry instructions from unsupported model error messages
