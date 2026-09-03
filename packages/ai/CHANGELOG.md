@@ -5,6 +5,10 @@
 
 - Added `getCodexAttestationProvider` so hosts and tests can read and restore the installed Codex attestation hook ([#10374](https://github.com/can1357/oh-my-pi/pull/10374) by [@kml93](https://github.com/kml93)).
 
+### Fixed
+
+- Anthropic and OpenRouter 402 credit-exhaustion errors ("would exceed your available credits", "Insufficient credits") now switch to a sibling account instead of stopping the turn with a retry hint.
+
 ## [18.1.5] - 2026-09-03
 
 ### Added
