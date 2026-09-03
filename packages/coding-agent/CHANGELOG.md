@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- File mentions now accept line selectors such as `@src/app.ts:40-80` and `@src/app.ts:1-5,20-30`, injecting only the requested lines into the prompt.
+
 ### Changed
 
 - Removed incorrect retry instructions from unsupported model error messages
