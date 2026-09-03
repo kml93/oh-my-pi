@@ -5,6 +5,7 @@
 ### Added
 
 - Added an XDG-aware speech-to-text cache directory helper for recorded audio ([#10374](https://github.com/can1357/oh-my-pi/pull/10374) by [@kml93](https://github.com/kml93)).
+- `TerminalQueryResponder` in `@oh-my-pi/pi-utils/vterm`: answers cursor-position, device-status, device-attribute, and OSC 10/11 color queries from a headless PTY's output without maintaining a screen.
 
 ## [18.1.3] - 2026-09-02
 
