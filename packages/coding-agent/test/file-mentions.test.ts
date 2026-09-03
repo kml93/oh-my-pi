@@ -39,17 +39,45 @@ describe("generateFileMentionMessages path resolution", () => {
 	test("injects only the requested line ranges with original line numbers", async () => {
 		const cwd = await createTempDir();
 		await Bun.write(path.join(cwd, "notes.txt"), "one\ntwo\nthree\nfour\nfive\nsix");
-		const messages = await generateFileMentionMessages(["notes.txt:2-3,5-5"], cwd);
+		const messages = await generateFileMentionMessages(["notes.txt:2-3,5"], cwd);
 		expect(messages).toHaveLength(1);
 		const message = messages[0];
 		if (message?.role !== "fileMention") {
 			throw new Error("expected file mention message");
 		}
 		expect(message.files[0]).toMatchObject({
-			path: "notes.txt:2-3,5-5",
+			path: "notes.txt:2-3,5",
 			content: "2|two\n3|three\n5|five",
 			lineCount: 3,
 		});
+	});
+
+	test("treats a bare line number as that single line, not from-N-to-EOF", async () => {
+		const cwd = await createTempDir();
+		await Bun.write(path.join(cwd, "notes.txt"), "one\ntwo\nthree\nfour\nfive\nsix");
+
+		const messages = await generateFileMentionMessages(["notes.txt:2"], cwd);
+		const message = messages[0];
+		if (message?.role !== "fileMention") {
+			throw new Error("expected file mention message");
+		}
+		expect(message.files[0]).toMatchObject({
+			path: "notes.txt:2",
+			content: "2|two",
+			lineCount: 1,
+		});
+	});
+
+	test("keeps an explicit open-ended range running to the end of the file", async () => {
+		const cwd = await createTempDir();
+		await Bun.write(path.join(cwd, "notes.txt"), "one\ntwo\nthree\nfour\nfive\nsix");
+
+		const messages = await generateFileMentionMessages(["notes.txt:4-"], cwd);
+		const message = messages[0];
+		if (message?.role !== "fileMention") {
+			throw new Error("expected file mention message");
+		}
+		expect(message.files[0]?.content).toBe("4|four\n5|five\n6|six");
 	});
 
 	test("keeps a literal selector-shaped filename ahead of range parsing", async () => {

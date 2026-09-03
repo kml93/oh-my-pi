@@ -86,7 +86,7 @@ async function resolveMention(filePath: string, cwd: string): Promise<ResolvedMe
 	const split = await splitPathAndSelPreferringLiteral(filePath, cwd);
 	const resolvedPath = await resolveMentionPath(split.path, cwd);
 	if (!resolvedPath) return null;
-	const ranges = split.sel ? parseLineRanges(split.sel) : null;
+	const ranges = split.sel ? parseLineRanges(normalizeMentionSelector(split.sel)) : null;
 	return {
 		displayPath: filePath,
 		filePath: resolvedPath,
@@ -103,6 +103,24 @@ function selectTextRanges(text: string, ranges: readonly LineRange[]): string {
 			return lines.slice(range.startLine - 1, endLine).map((line, index) => `${range.startLine + index}|${line}`);
 		})
 		.join("\n");
+}
+
+/**
+ * Normalize bare line numbers (`15`) into closed single-line ranges (`15-15`)
+ * before handing a mention selector to the shared read-tool parser. In the
+ * read tool a bare `N` means "from N to EOF" (documented `:50` semantics), so
+ * `1,5-8,15` would merge into `1-EOF` and inject the whole file. For mentions
+ * the intuitive reading is exact lines; open-ended forms keep their explicit
+ * dash (`15-`) when everything to EOF is wanted.
+ */
+function normalizeMentionSelector(sel: string): string {
+	return sel
+		.split(",")
+		.map(chunk => {
+			const bare = /^L?(\d+)$/i.exec(chunk);
+			return bare ? `${bare[1]}-${bare[1]}` : chunk;
+		})
+		.join(",");
 }
 
 function buildTextOutput(textContent: string): { output: string; lineCount: number } {
