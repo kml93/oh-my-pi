@@ -2,7 +2,12 @@
 set -eu
 
 script_dir=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd -P)
-repo_root=$(CDPATH='' cd -- "$script_dir/../../../.." && pwd -P)
+target="${1:-$PWD}"
+if [ -f "$target/packages/natives/package.json" ]; then
+  repo_root=$(CDPATH='' cd -- "$target" && pwd -P)
+else
+  repo_root=$(CDPATH='' cd -- "$script_dir/../../../.." && pwd -P)
+fi
 native_dir=$repo_root/packages/natives/native
 cache_root=${XDG_CACHE_HOME:-$HOME/.cache}/omp/natives
 
@@ -36,7 +41,7 @@ addon_is_current() {
   file=$1
   [ -f "$file" ] || return 1
   sentinel=__piNativesV$(printf '%s' "$version" | tr '.-' '__')
-  LC_ALL=C grep -a -q "$sentinel" "$file"
+  python3 -c 'import sys; data = open(sys.argv[1], "rb").read(); sys.exit(0 if sys.argv[2].encode() in data else 1)' "$file" "$sentinel" 2>/dev/null
 }
 
 cache_is_current() {
@@ -49,7 +54,7 @@ workspace_is_current() {
 
 fetch_addons() {
   mkdir -p "$version_cache"
-  tarball=$(cd "$repo_root" && bun pm view "@oh-my-pi/pi-natives-linux-x64@$version" dist.tarball)
+  tarball=$( (cd "$repo_root" && bun pm view "@oh-my-pi/pi-natives-linux-x64@$version" dist.tarball 2>/dev/null) || (cd "$repo_root" && bun pm view "@oh-my-pi/pi-natives-linux-x64@latest" dist.tarball) )
   tmp=$(mktemp -d)
   trap 'rm -rf "$tmp" >/dev/null 2>&1' EXIT HUP INT TERM
   curl -fsSL --retry 3 "$tarball" | tar -xz -C "$tmp"
