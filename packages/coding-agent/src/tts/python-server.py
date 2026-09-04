@@ -37,15 +37,22 @@ def fail(request_id, error):
 
 def handle_load(request):
   global kokoro
+  import onnxruntime as rt
   from kokoro_onnx import Kokoro
 
-  kokoro = Kokoro(request["model"], request["voices"])
+  opts = rt.SessionOptions()
+  opts.intra_op_num_threads = 6
+  opts.inter_op_num_threads = 1
+  sess = rt.InferenceSession(
+    request["model"], sess_options=opts, providers=["CPUExecutionProvider"]
+  )
+  kokoro = Kokoro.from_session(sess, request["voices"])
   respond({"type": "ready", "id": request["id"]})
 
 
 def handle_synthesize(request):
   audio, sample_rate = kokoro.create(
-    request["text"], voice=request["voice"], speed=1.0, lang=request["lang"]
+    request["text"], voice=request["voice"], speed=1.25, lang=request["lang"]
   )
   pcm = audio.astype("<f4").tobytes()
   respond(
