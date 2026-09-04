@@ -19,7 +19,8 @@ Clean fast-forward or conflict-free merge? Merge `main` directly in the primary 
 
 ```bash
 git merge main
-bun packages/coding-agent/src/cli.ts --smoke-test
+scripts/setup-minimum-runtime-dev.sh
+omp --smoke-test
 git push origin kml93
 ```
 
