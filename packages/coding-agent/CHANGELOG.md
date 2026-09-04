@@ -5,6 +5,8 @@
 ### Added
 
 - File mentions now accept line selectors such as `@src/app.ts:40-80`, `@src/app.ts:1-5,20-30`, and tails like `@log.txt:-60`, injecting only the requested lines into the prompt ([#10623](https://github.com/can1357/oh-my-pi/pull/10623) by [@kml93](https://github.com/kml93)). Selectors survive quoted paths (`@"My Folder/a.ts":1-5`); invalid ranges are ignored silently.
+- Added the `retry.waitForUsageReset` setting: when a provider reports usage-limit exhaustion with a reset time (5-hour or weekly quota windows on any provider), the session sleeps until the reset instead of failing fast past `retry.maxDelayMs`.
+
 ### Fixed
 
 - Report oversized selected lines that cannot fit after read context, with a working raw recovery selector instead of a looping continuation hint ([#10775](https://github.com/can1357/oh-my-pi/issues/10775)).
