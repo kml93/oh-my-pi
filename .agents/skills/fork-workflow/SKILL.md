@@ -70,5 +70,6 @@ Format: `<type>(<scope>): <short imperative description>`
 - NEVER commit custom work to `main`; keep fast-forward synchronization possible.
 - NEVER merge `upstream-pi/main`; inspect and port selected changes.
 - Verify runtime after every merge with the applicable smoke command.
+- NEVER fix pre-existing fork-local errors or regressions discovered on `kml93` directly or unilaterally: report them to the user, and once agreed, isolate any fix in a dedicated `local/mod--<name>` worktree.
 
 Dev runtime setup uses `scripts/setup-minimum-runtime-dev.sh`.
