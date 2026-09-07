@@ -33,6 +33,14 @@ git -C .worktrees/omp-sync--<version> merge main
 
 Resolve conflicts by preserving OMP architectural upgrades and fork-local hooks. Verify, commit with `sync(omp): ...`, then merge the sync branch into the primary `kml93` checkout.
 
+### Conflicts Originating from an In-Flight PR (`omp/pr--*`)
+
+Never resolve conflicts originating from an open/in-flight PR branch directly in `kml93`:
+1. `git merge --abort` to keep `kml93` clean.
+2. Synchronize the PR branch (`omp/pr--<name>`) with `main` and resolve the conflict there with a minimal diff.
+3. Validate the PR test suite.
+4. Merge the updated PR branch and `main` into `kml93`.
+
 ---
 
 ## Tracking PI

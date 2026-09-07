@@ -21,6 +21,8 @@ What is the intended result?
 ├─ Selective port from earendil-works/pi → `pi/port--<name>` worktree from `kml93`.
 ├─ Durable fork-local change → `local/mod--<name>` worktree from `kml93`.
 ├─ Upstream synchronization → Follow `references/sync.md`.
+│  └─ Conflict from an in-flight PR branch (`omp/pr--*`)?
+│     └─ Abort merge → Sync PR branch on `main` first → Merge updated PR into `kml93`.
 └─ Trivial fork-local change → MAY edit `kml93` directly.
 ```
 
