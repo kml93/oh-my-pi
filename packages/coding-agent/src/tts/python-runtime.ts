@@ -1,7 +1,8 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { $ } from "bun";
-import type { RawAudio } from "@huggingface/transformers";
+import type { ProgressInfo, RawAudio } from "@huggingface/transformers";
+import type { TinyModelDtype } from "../tiny/dtype";
 import { $which, isEnoent, type RuntimeInstallPhase, withFileLock } from "@oh-my-pi/pi-utils";
 import { stageRunnerScript } from "../eval/runner-cache";
 import { venvPython } from "../tiny/mlx-runtime";
@@ -42,11 +43,11 @@ interface PythonKokoroInstance {
 export interface PythonKokoroRuntime {
 	KokoroTTS: {
 		from_pretrained(
-			_repo: string,
-			_options: {
-				dtype: unknown;
+			repo: string,
+			options: {
+				dtype: TinyModelDtype;
 				device: "cpu" | "wasm" | "webgpu";
-				progress_callback: (info: unknown) => void;
+				progress_callback: (info: ProgressInfo) => void;
 			},
 		): Promise<PythonKokoroInstance>;
 	};
@@ -320,7 +321,13 @@ async function startEngine(
 			const bytes = Buffer.from(response.pcmB64, "base64");
 			const audio = new Float32Array(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength));
 			if (audio.length !== response.samples) throw new Error("kokoro server audio length mismatch");
-			return { audio, sampling_rate: response.sampleRate };
+			return {
+				audio,
+				sampling_rate: response.sampleRate,
+				data: audio,
+				toBlob: () => new Blob([audio.buffer]),
+				save: async () => {},
+			};
 		},
 	};
 }
