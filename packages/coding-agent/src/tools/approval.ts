@@ -11,13 +11,13 @@ import type { AgentTool, ToolApprovalDecision, ToolTier } from "@oh-my-pi/pi-age
 export type { ToolApproval, ToolApprovalDecision, ToolTier } from "@oh-my-pi/pi-agent-core";
 
 export type ApprovalPolicy = "allow" | "deny" | "prompt";
-export const APPROVAL_MODES = ["always-ask", "write", "yolo"] as const;
-export type ApprovalMode = (typeof APPROVAL_MODES)[number];
+export const APPROVAL_MODE_ORDER = ["always-ask", "write", "yolo"] as const;
+export type ApprovalMode = (typeof APPROVAL_MODE_ORDER)[number];
 
 /** Return the next approval mode in the canonical configuration order. */
 export function nextApprovalMode(mode: ApprovalMode): ApprovalMode {
-	const nextIndex = (APPROVAL_MODES.indexOf(mode) + 1) % APPROVAL_MODES.length;
-	return APPROVAL_MODES[nextIndex]!;
+	const nextIndex = (APPROVAL_MODE_ORDER.indexOf(mode) + 1) % APPROVAL_MODE_ORDER.length;
+	return APPROVAL_MODE_ORDER[nextIndex]!;
 }
 
 export type ApprovalModeCycleResult =

@@ -1,6 +1,11 @@
 import { extractUriScheme } from "../internal-urls/parse";
 import { type LineRange } from "@oh-my-pi/pi-tui/tools/line-ranges";
-import { splitPathAndSel, splitInternalUrlSel, isReadableUrlPath } from "@oh-my-pi/pi-tui/tools/read";
+import {
+	FILE_LINE_RANGE_RE,
+	splitPathAndSel,
+	splitInternalUrlSel,
+	isReadableUrlPath,
+} from "@oh-my-pi/pi-tui/tools/read";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";

@@ -34,7 +34,7 @@ import {
 	type SttModel,
 	type SttModelKey,
 	type TransformersSttModelSpec,
-} from "./local/models";
+} from "./models";
 import { loadSourceSherpaRuntime, type SherpaOfflineRecognizer, type SherpaRuntime } from "./sherpa-runtime";
 
 const ASR_TASK = "automatic-speech-recognition";

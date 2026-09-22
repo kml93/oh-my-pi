@@ -1,4 +1,4 @@
-import type { SttModelKey } from "./local/models";
+import type { SttModelKey } from "./models";
 
 export type SttProgressStatus = "initiate" | "download" | "progress" | "progress_total" | "done" | "ready" | "error";
 
