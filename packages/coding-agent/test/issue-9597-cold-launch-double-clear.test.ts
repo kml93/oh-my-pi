@@ -1,13 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
 import { resetSettingsForTest, Settings } from "@oh-my-pi/pi-coding-agent/config/settings";
-import type { ComposerPreferences } from "@oh-my-pi/pi-coding-agent/modes/composer";
+import type { ComposerPreferences } from "@oh-my-pi/pi-tui/prompt/composer";
 import { InteractiveMode } from "@oh-my-pi/pi-coding-agent/modes/interactive-mode";
 import {
 	beginStartupComposer,
 	stopPendingStartupComposer,
 	takeStartupComposerLease,
 } from "@oh-my-pi/pi-coding-agent/modes/startup-composer";
-import { initTheme } from "@oh-my-pi/pi-coding-agent/modes/theme/theme";
+import { initTheme } from "@oh-my-pi/pi-tui/theme";
 import { VirtualTerminal } from "../../tui/test/virtual-terminal";
 import { assistantMsg, createTestSession, userMsg } from "./utilities";
 
@@ -95,7 +95,13 @@ describe("issue #9597 — cold-launch welcome duplication", () => {
 			await mode.init({ suppressWelcomeIntro: resuming, clearInitialTerminalHistory: true });
 			await terminal.waitForRender();
 			await mode.renderInitialMessages({ preserveExistingChat: true });
-			await terminal.waitForRender();
+			// The replay rebuild paints in idle chunks after the promise resolves;
+			// settle on the frame that actually shows the replayed transcript.
+			await terminal.waitForRender(
+				() =>
+					!resuming ||
+					terminal.getScrollBuffer().some(line => Bun.stripANSI(line).includes("resume marker answer")),
+			);
 			const rows = terminal.getScrollBuffer().map(l => Bun.stripANSI(l));
 			return {
 				resets: terminal.countResets(),

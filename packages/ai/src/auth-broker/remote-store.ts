@@ -8,7 +8,7 @@
  * runs isn't required.
  */
 import * as os from "node:os";
-import { getInstallId, logger } from "@oh-my-pi/pi-utils";
+import { getAppName, getInstallId, logger } from "@oh-my-pi/pi-utils";
 import {
 	type AuthCredential,
 	type AuthCredentialSnapshotEntry,
@@ -22,7 +22,7 @@ import {
 import * as AIError from "../error";
 import type { OAuthCredentials } from "../registry/oauth/types";
 import type { Provider } from "../types";
-import type { ObservedUsageEntry, UsageReport } from "../usage";
+import type { ClientUsageIdentity, ObservedUsageEntry, UsageReport } from "../usage";
 import { type AuthBrokerClient, AuthBrokerError, AuthBrokerStreamUnsupportedError } from "./client";
 import type {
 	CredentialBlockSnapshot,
@@ -204,7 +204,7 @@ function mergeUsageReports(base: UsageReport, overlay: UsageReport): UsageReport
 		limits,
 		metadata: {
 			...overlayMetadata,
-			...(base.metadata ?? {}),
+			...base.metadata,
 			...(overlayMetadata.headersUpdatedAt !== undefined
 				? { headersUpdatedAt: overlayMetadata.headersUpdatedAt }
 				: {}),
@@ -255,6 +255,18 @@ export class RemoteAuthCredentialStore implements AuthCredentialStore {
 	#snapshot: SnapshotResponse = emptySnapshot();
 	#snapshotReceivedAt = Date.now();
 	#generation = 0;
+	/**
+	 * Content fingerprint of the credential set in {@link #snapshot} (id +
+	 * provider + credential material), recomputed after every snapshot mutation.
+	 * Drives {@link #credentialRevision} independently of the broker's numeric
+	 * generation, which is an in-memory counter that resets when the broker
+	 * process restarts and so cannot be trusted for change detection.
+	 */
+	#credentialFingerprint = "";
+	/** Monotonic local counter bumped whenever {@link #credentialFingerprint} changes. */
+	#credentialRevision = 0;
+	/** Revision last reported as "seen" by {@link pollExternalChanges}; seeded from the initial snapshot. */
+	#acknowledgedRevision = 0;
 	#usageOverlays: Map<string, UsageReport> = new Map();
 	#backgroundAbort = new AbortController();
 	readonly #backgroundIdleMs: number;
@@ -284,8 +296,8 @@ export class RemoteAuthCredentialStore implements AuthCredentialStore {
 	#streamingActive = false;
 	/** Latched once the broker has answered 404 — never try the stream again. */
 	#streamingUnsupported = false;
-	/** Pending observed usage keyed by `provider\u0000model`, merged until flush. */
-	#observedUsage = new Map<string, ObservedUsageEntry>();
+	/** Pending observed usage keyed by `installId\u0000app\u0000provider\u0000model`, merged until flush. */
+	#observedUsage = new Map<string, { client: ClientUsageIdentity; entry: ObservedUsageEntry }>();
 	#observedUsageTimer: Timer | undefined;
 	readonly #observedUsageFlushMs: number;
 	/** Latched once the broker answered 404 — old broker, never report again. */
@@ -300,6 +312,7 @@ export class RemoteAuthCredentialStore implements AuthCredentialStore {
 			? new Map([...opts.accountPool].map(([provider, identities]) => [provider, new Set(identities)]))
 			: undefined;
 		this.#applySnapshot(opts.initialSnapshot ?? emptySnapshot(), opts.initialSnapshot?.generation ?? 0);
+		this.#acknowledgedRevision = this.#credentialRevision;
 		this.#onSnapshot = opts.onSnapshot;
 		void this.#runBackground();
 	}
@@ -325,6 +338,7 @@ export class RemoteAuthCredentialStore implements AuthCredentialStore {
 		this.#snapshot = { ...snapshot, credentials };
 		this.#generation = generation;
 		this.#snapshotReceivedAt = nowMs;
+		this.#refreshCredentialRevision();
 		const onSnapshot = this.#onSnapshot;
 		if (!onSnapshot) return;
 		try {
@@ -332,6 +346,34 @@ export class RemoteAuthCredentialStore implements AuthCredentialStore {
 		} catch (error) {
 			logger.debug("auth-broker snapshot callback failed", { error: String(error) });
 		}
+	}
+
+	/**
+	 * Recompute the credential-content fingerprint and bump
+	 * {@link #credentialRevision} when it changes. Called after every snapshot
+	 * mutation so {@link pollExternalChanges} detects add/remove/replace even
+	 * when the broker's numeric generation repeats (e.g. after a broker
+	 * restart resets its in-memory counter).
+	 */
+	#refreshCredentialRevision(): void {
+		const fingerprint = this.#computeCredentialFingerprint();
+		if (fingerprint === this.#credentialFingerprint) return;
+		this.#credentialFingerprint = fingerprint;
+		this.#credentialRevision += 1;
+	}
+
+	/**
+	 * Order-independent digest of the routable credential material — exactly the
+	 * fields {@link listAuthCredentials} exposes (id, provider, credential). A
+	 * token rotation or an add/remove changes it; credential blocks and usage
+	 * overlays do not.
+	 */
+	#computeCredentialFingerprint(): string {
+		const parts = this.#snapshot.credentials.map(
+			entry => `${entry.id}\u0000${entry.provider}\u0000${JSON.stringify(entry.credential)}`,
+		);
+		parts.sort();
+		return parts.join("\u0001");
 	}
 	#protectNewSnapshotBlocks(previous: readonly SnapshotEntry[], next: readonly SnapshotEntry[], nowMs: number): void {
 		const previousBlocksByKey = new Map<string, string>();
@@ -499,15 +541,13 @@ export class RemoteAuthCredentialStore implements AuthCredentialStore {
 	#applyStreamEvent(event: SnapshotStreamEvent): void {
 		switch (event.kind) {
 			case "snapshot": {
-				// Strip the discriminator so we store the wire-shape SnapshotResponse.
+				// The first frame of every SSE connection is a full authoritative
+				// snapshot. Always adopt it as the new generation baseline: the
+				// broker's in-memory generation counter resets on restart and may
+				// therefore be lower than the previous stream's last value.
+				// Subsequent entry/removal frames remain guarded against reordering
+				// relative to this new baseline below.
 				const { kind: _kind, ...snapshot } = event;
-				if (snapshot.generation < this.#generation) {
-					logger.debug("auth-broker stream snapshot older than local; ignoring", {
-						local: this.#generation,
-						incoming: snapshot.generation,
-					});
-					return;
-				}
 				this.#applySnapshot(snapshot, snapshot.generation);
 				return;
 			}
@@ -548,6 +588,7 @@ export class RemoteAuthCredentialStore implements AuthCredentialStore {
 		this.#snapshot = { ...this.#snapshot, generation, serverNowMs, refresher, credentials };
 		this.#generation = generation;
 		this.#snapshotReceivedAt = Date.now();
+		this.#refreshCredentialRevision();
 	}
 
 	#removeStreamCredential(
@@ -564,6 +605,7 @@ export class RemoteAuthCredentialStore implements AuthCredentialStore {
 		this.#snapshot = { ...this.#snapshot, generation, serverNowMs, refresher, credentials };
 		this.#generation = generation;
 		this.#snapshotReceivedAt = Date.now();
+		this.#refreshCredentialRevision();
 	}
 
 	/** Re-hydrate the in-memory snapshot from the broker. */
@@ -572,6 +614,29 @@ export class RemoteAuthCredentialStore implements AuthCredentialStore {
 		const result = await this.#client.fetchSnapshot();
 		if (result.status === 200) this.#applySnapshot(result.snapshot, result.generation);
 		return this.#snapshot;
+	}
+
+	/**
+	 * Stateful probe for broker-side credential changes, mirroring
+	 * {@link SqliteAuthCredentialStore.pollExternalChanges} so long-lived broker
+	 * clients (notably `auth-gateway serve`) pick up logins/logouts made by
+	 * another process without a restart.
+	 *
+	 * Compares a local content revision, not the broker's numeric generation:
+	 * generation is an in-memory counter that resets when the broker process
+	 * restarts, so a reconnecting stream can deliver a different credential set
+	 * under a repeated (or lower) generation. {@link #refreshCredentialRevision}
+	 * bumps the revision whenever the applied credential material actually
+	 * changes, catching those cases too. Records foreground activity first: a
+	 * low-traffic client's background sync parks after `#backgroundIdleMs`, and
+	 * without this wakeup it would never fetch the new snapshot to report in the
+	 * first place.
+	 */
+	pollExternalChanges(): boolean {
+		this.#noteActivity();
+		if (this.#credentialRevision === this.#acknowledgedRevision) return false;
+		this.#acknowledgedRevision = this.#credentialRevision;
+		return true;
 	}
 
 	listAuthCredentials(provider?: string): StoredAuthCredential[] {
@@ -1267,22 +1332,26 @@ export class RemoteAuthCredentialStore implements AuthCredentialStore {
 	 * a flush. One `POST /v1/usage/observed` at most per flush interval; on
 	 * failure the batch is retained and retried with the next flush. A 404
 	 * (pre-endpoint broker) disables reporting for the life of this store.
+	 *
+	 * `client` overrides the reporting identity — the auth-gateway attributes
+	 * each request to the originating install/app instead of the gateway host.
 	 */
-	recordObservedUsage(entries: ObservedUsageEntry[]): void {
+	recordObservedUsage(entries: ObservedUsageEntry[], client?: ClientUsageIdentity): void {
 		if (this.#closed || this.#observedUsageUnsupported) return;
+		const identity = client ?? { installId: getInstallId(), hostname: os.hostname(), app: getAppName() };
 		for (const entry of entries) {
-			const key = `${entry.provider}\u0000${entry.model}`;
+			const key = `${identity.installId}\u0000${identity.app ?? ""}\u0000${entry.provider}\u0000${entry.model}`;
 			const pending = this.#observedUsage.get(key);
 			if (pending) {
-				pending.at = Math.max(pending.at, entry.at);
-				pending.requests += entry.requests;
-				pending.inputTokens += entry.inputTokens;
-				pending.outputTokens += entry.outputTokens;
-				pending.cacheReadTokens += entry.cacheReadTokens;
-				pending.cacheWriteTokens += entry.cacheWriteTokens;
-				pending.costUsd += entry.costUsd;
+				pending.entry.at = Math.max(pending.entry.at, entry.at);
+				pending.entry.requests += entry.requests;
+				pending.entry.inputTokens += entry.inputTokens;
+				pending.entry.outputTokens += entry.outputTokens;
+				pending.entry.cacheReadTokens += entry.cacheReadTokens;
+				pending.entry.cacheWriteTokens += entry.cacheWriteTokens;
+				pending.entry.costUsd += entry.costUsd;
 			} else {
-				this.#observedUsage.set(key, { ...entry });
+				this.#observedUsage.set(key, { client: identity, entry: { ...entry } });
 			}
 		}
 		if (this.#observedUsage.size > 0 && this.#observedUsageTimer === undefined) {
@@ -1298,24 +1367,38 @@ export class RemoteAuthCredentialStore implements AuthCredentialStore {
 		if (this.#observedUsage.size === 0 || this.#observedUsageUnsupported) return;
 		const batch = [...this.#observedUsage.values()];
 		this.#observedUsage.clear();
-		try {
-			await this.#client.reportClientUsage({
-				installId: getInstallId(),
-				hostname: os.hostname(),
-				entries: batch,
-			});
-		} catch (error) {
-			const status = error instanceof AuthBrokerError ? error.status : undefined;
-			if (status === 404 || status === 501) {
-				// Broker predates the endpoint (or store can't persist) — stop trying.
-				this.#observedUsageUnsupported = true;
-				logger.debug("auth-broker does not accept observed usage; reporting disabled", { status });
-				return;
+		// One report per distinct client identity — usually one (this install),
+		// plus one per attributed gateway caller when running inside the gateway.
+		const groups = new Map<string, { client: ClientUsageIdentity; entries: ObservedUsageEntry[] }>();
+		for (const { client, entry } of batch) {
+			const key = `${client.installId}\u0000${client.app ?? ""}`;
+			const group = groups.get(key);
+			if (group) group.entries.push(entry);
+			else groups.set(key, { client, entries: [entry] });
+		}
+		for (const { client, entries } of groups.values()) {
+			try {
+				await this.#client.reportClientUsage({
+					installId: client.installId,
+					hostname: client.hostname,
+					app: client.app,
+					entries,
+				});
+			} catch (error) {
+				const status = error instanceof AuthBrokerError ? error.status : undefined;
+				if (status === 400 || status === 404 || status === 501) {
+					// Broker predates the endpoint or its request schema (or the store
+					// can't persist) — stop trying for the life of this process.
+					this.#observedUsageUnsupported = true;
+					logger.debug("auth-broker does not accept observed usage; reporting disabled", { status });
+					return;
+				}
+				logger.debug("auth-broker observed usage flush failed; retrying next flush", { error: String(error) });
+				// Merge the failed group back under the (possibly refilled) buffer so
+				// nothing is lost; bounded because entries are keyed per
+				// (identity, provider, model).
+				if (!this.#closed) this.recordObservedUsage(entries, client);
 			}
-			logger.debug("auth-broker observed usage flush failed; retrying next flush", { error: String(error) });
-			// Merge the failed batch back under the (possibly refilled) buffer so
-			// nothing is lost; bounded because entries are keyed per (provider, model).
-			if (!this.#closed) this.recordObservedUsage(batch);
 		}
 	}
 

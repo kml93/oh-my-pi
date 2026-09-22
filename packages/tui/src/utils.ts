@@ -209,6 +209,14 @@ export function padding(n: number): string {
 	return " ".repeat(n);
 }
 
+/** Center a line in a field of `width` columns, truncating when too wide. */
+export function centerLine(line: string, width: number): string {
+	const lineWidth = visibleWidth(line);
+	if (lineWidth >= width) return truncateToWidth(line, width);
+	const left = Math.floor((width - lineWidth) / 2);
+	return padding(left) + line + padding(width - left - lineWidth);
+}
+
 // Grapheme segmenter (shared instance)
 const segmenter = new Intl.Segmenter(undefined, { granularity: "grapheme" });
 
@@ -623,7 +631,16 @@ export function applyBackgroundToLine(line: string, width: number, bgFn: (text: 
 	const paddingNeeded = Math.max(0, width - visibleLen);
 
 	// Apply background to content + padding
-	const withPadding = line + padding(paddingNeeded);
+	let withPadding = line + padding(paddingNeeded);
+	// Nested background resets (e.g. inline color chips closing with \x1b[49m)
+	// would terminate a plain open…close background wrapper early; re-open the
+	// line background after each one (same trick as Theme.bgFill).
+	if (line.includes("\x1b[49m")) {
+		const probe = bgFn("\x01");
+		const probeIdx = probe.indexOf("\x01");
+		const open = probeIdx > 0 ? probe.slice(0, probeIdx) : "";
+		if (open) withPadding = withPadding.replaceAll("\x1b[49m", `\x1b[49m${open}`);
+	}
 	return bgFn(withPadding);
 }
 

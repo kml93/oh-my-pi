@@ -111,6 +111,16 @@ function parsePathPrefix(prefix: string): { rawPrefix: string; isAtPrefix: boole
 	return { rawPrefix: prefix, isAtPrefix: false, isQuotedPrefix: false };
 }
 
+/**
+ * Whether an autocomplete value represents a directory: trailing slash or
+ * backslash, optionally followed by a closing quote for quoted paths.
+ * Shared by the provider suffix logic and the editor chain-on-accept
+ * behavior so Tab and Enter acceptance stay in sync.
+ */
+export function isDirectoryCompletionValue(value: string): boolean {
+	return /[\\/]["']?$/.test(value);
+}
+
 function buildCompletionValue(
 	path: string,
 	options: { isDirectory: boolean; isAtPrefix: boolean; isQuotedPrefix: boolean },
@@ -127,11 +137,8 @@ function buildCompletionValue(
 	return `${openQuote}${path}${closeQuote}`;
 }
 
-/**
- * Check if query is a subsequence of target (fuzzy match).
- * "wig" matches "skill:wig" because w-i-g appear in order.
- */
-function fuzzyMatch(query: string, target: string): boolean {
+/** Ranked-tier subsequence match ("wig" ~ "skill:wig"); distinct from fuzzy.ts's word-local engine. */
+export function subsequenceMatch(query: string, target: string): boolean {
 	if (query.length === 0) return true;
 	if (query.length > target.length) return false;
 
@@ -142,11 +149,8 @@ function fuzzyMatch(query: string, target: string): boolean {
 	return qi === query.length;
 }
 
-/**
- * Score a fuzzy match. Higher = better match.
- * Prioritizes: exact match > starts-with > contains > subsequence
- */
-function fuzzyScore(query: string, target: string): number {
+/** Ranked-tier subsequence score (100/80/60/40−gaps·5); higher is better, 0 is no match. */
+export function subsequenceScore(query: string, target: string): number {
 	if (query.length === 0) return 1;
 	if (target === query) return 100;
 	if (target.startsWith(query)) return 80;
@@ -299,7 +303,7 @@ export function scoreCommandTextMatch(lowerPrefix: string, lowerTarget: string):
 	// name first (e.g. `/set` → `setup` above `settings`), silently changing the
 	// command that the sync-completion path applies on Enter.
 	if (lowerTarget.startsWith(lowerPrefix)) return 900;
-	return fuzzyMatch(lowerPrefix, lowerTarget) ? fuzzyScore(lowerPrefix, lowerTarget) : 0;
+	return subsequenceMatch(lowerPrefix, lowerTarget) ? subsequenceScore(lowerPrefix, lowerTarget) : 0;
 }
 
 function buildSlashCommandCompletions(
@@ -331,13 +335,24 @@ function buildSlashCommandCompletions(
 				let best: (AutocompleteItem & { score: number; usage: number }) | undefined;
 
 				const isSkillCommand = name.startsWith(SKILL_NAMESPACE);
+				// Skills are matched by their bare name as well as the full
+				// `skill:` name so a broken-out or mid-prompt skill ranks at
+				// prefix strength (`/batch` → `skill:batch`) instead of a weak
+				// full-name fuzzy hit.
 				const nameScore =
 					lowerPrefix.length === 0 && isSkillCommand
 						? 950
-						: scoreCommandTextMatch(lowerPrefix, name.toLowerCase());
+						: isSkillCommand
+							? Math.max(
+									scoreCommandTextMatch(lowerPrefix, name.toLowerCase()),
+									skillBareNameBreakoutTier(lowerPrefix, name.slice(SKILL_NAMESPACE.length).toLowerCase()),
+								)
+							: scoreCommandTextMatch(lowerPrefix, name.toLowerCase());
 				const lowerDesc = staticDesc.toLowerCase();
 				const descScore =
-					lowerDesc && fuzzyMatch(lowerPrefix, lowerDesc) ? fuzzyScore(lowerPrefix, lowerDesc) * 0.5 : 0;
+					lowerDesc && subsequenceMatch(lowerPrefix, lowerDesc)
+						? subsequenceScore(lowerPrefix, lowerDesc) * 0.5
+						: 0;
 				const primaryScore = Math.max(nameScore, descScore);
 				if (primaryScore > 0) {
 					const fullDesc = resolveFullDesc();
@@ -373,7 +388,7 @@ function buildSlashCommandCompletions(
 			// Equal text-match scores fall back to usage frequency, then to the
 			// stable registry order.
 			.sort((a, b) => b.score - a.score || b.usage - a.usage)
-			.map(({ score: _, usage: _usage, ...rest }) => rest)
+			.map(({ score: _score, usage: _usage, ...rest }) => rest)
 	);
 }
 
@@ -391,23 +406,81 @@ function hasPromptTextBeforeSlash(
 
 export const SKILL_NAMESPACE = "skill:";
 
+/** Exact/leading-prefix tier for ordinary command names and aliases. */
+function commandBreakoutTier(lowerPrefix: string, lowerTarget: string): number {
+	if (lowerPrefix === lowerTarget) return 1000;
+	if (lowerTarget.startsWith(lowerPrefix)) return 900;
+	return 0;
+}
+
+/**
+ * Match a bare skill name from the beginning of any hyphen-delimited segment.
+ * This stays allocation-free on the hot path: it scans segment boundaries
+ * in-place and never materializes split/slice arrays.
+ */
+function skillBareNameBreakoutTier(lowerPrefix: string, lowerBareName: string): number {
+	if (lowerPrefix.length === 0) return 0;
+	if (lowerPrefix === lowerBareName) return 1000;
+	if (lowerBareName.startsWith(lowerPrefix)) return 900;
+
+	let segmentStart = 0;
+	while (segmentStart < lowerBareName.length) {
+		while (segmentStart < lowerBareName.length && lowerBareName.charCodeAt(segmentStart) !== 45) {
+			segmentStart += 1;
+		}
+		segmentStart += 1;
+		if (segmentStart >= lowerBareName.length) break;
+
+		if (lowerBareName.startsWith(lowerPrefix, segmentStart)) {
+			let segmentEnd = segmentStart;
+			while (segmentEnd < lowerBareName.length && lowerBareName.charCodeAt(segmentEnd) !== 45) {
+				segmentEnd += 1;
+			}
+			return lowerPrefix.length === segmentEnd - segmentStart ? 1000 : 900;
+		}
+	}
+
+	return 0;
+}
+
 /**
  * Collapse `skill:*` commands into a single `/skill:` namespace row while the
- * typed prefix has not committed to the namespace. Until the prefix starts
- * with `skill:`, individual skills never list — a lone group entry (shown only
- * while the prefix is still a prefix of `skill:`) keeps the `/` popup
- * readable. Accepting the group inserts `/skill:` without a trailing space so
- * the reopened popup expands to the individual skills.
+ * typed prefix has not committed to the namespace. A lone group entry (shown
+ * only while the prefix is still a prefix of `skill:`) keeps the `/` popup
+ * readable. A skill breaks out of the group only when its bare name matches
+ * the prefix at the beginning of the name or a hyphen-delimited segment, at a
+ * strictly stronger tier than every non-skill command name and alias. Ordinary
+ * commands keep exact/leading-prefix tiers only; a tie keeps the popup
+ * command-only, and fuzzy-only skill hits never surface. Accepting the group
+ * inserts `/skill:` without a trailing space so the reopened popup expands to
+ * the individual skills.
  */
 function collapseSkillNamespace(commands: CommandEntry[], lowerPrefix: string): CommandEntry[] {
 	if (lowerPrefix.startsWith(SKILL_NAMESPACE)) return commands;
+	const approachesNamespace = SKILL_NAMESPACE.startsWith(lowerPrefix);
+	let commandTier = 0;
+	if (!approachesNamespace) {
+		for (const cmd of commands) {
+			const name = getCommandName(cmd);
+			if (!name || name.startsWith(SKILL_NAMESPACE)) continue;
+			commandTier = Math.max(commandTier, commandBreakoutTier(lowerPrefix, name.toLowerCase()));
+			for (const alias of getCommandAliases(cmd)) {
+				commandTier = Math.max(commandTier, commandBreakoutTier(lowerPrefix, alias.toLowerCase()));
+			}
+			if (commandTier === 1000) break;
+		}
+	}
 	let skillCount = 0;
 	let skillIcon: string | undefined;
 	const rest = commands.filter(cmd => {
-		if (!getCommandName(cmd)?.startsWith(SKILL_NAMESPACE)) return true;
+		const name = getCommandName(cmd);
+		if (!name?.startsWith(SKILL_NAMESPACE)) return true;
 		skillCount += 1;
 		skillIcon ??= cmd.icon;
-		return false;
+		return (
+			!approachesNamespace &&
+			skillBareNameBreakoutTier(lowerPrefix, name.slice(SKILL_NAMESPACE.length).toLowerCase()) > commandTier
+		);
 	});
 	if (skillCount === 0) return commands;
 	if (!SKILL_NAMESPACE.startsWith(lowerPrefix)) return rest;
@@ -426,7 +499,8 @@ function collapseSkillNamespace(commands: CommandEntry[], lowerPrefix: string): 
  * popup alive through fuzzy name/description hits, so a token only matches as
  * - a prefix of the `skill:` namespace (incl. the bare `/` entry point),
  * - an explicit `skill:…` query (full fuzzy name/description search), or
- * - a prefix of the skill's bare name (`/hum` → `skill:humanizer`).
+ * - a prefix at the start of the skill bare name or one of its hyphen-delimited
+ *   segments (`/hum` → `skill:humanizer`, `/last` → `skill:research-last30days`).
  * Anything else yields no items, letting the caller fall through to path
  * completion or close the popup. Shared with the editor's accept-time
  * staleness guard so Tab/Enter never accepts a skill the refreshed popup
@@ -439,7 +513,10 @@ export function midPromptSkillTokenMatches(lowerToken: string, name: string, des
 		if (scoreCommandTextMatch(lowerToken, lowerName) > 0) return true;
 		return !!description && scoreCommandTextMatch(lowerToken, description.toLowerCase()) > 0;
 	}
-	return lowerName.startsWith(SKILL_NAMESPACE) && lowerName.slice(SKILL_NAMESPACE.length).startsWith(lowerToken);
+	return (
+		lowerName.startsWith(SKILL_NAMESPACE) &&
+		skillBareNameBreakoutTier(lowerToken, lowerName.slice(SKILL_NAMESPACE.length)) > 0
+	);
 }
 
 function buildMidPromptSkillCompletions(commands: CommandEntry[], lowerPrefix: string): AutocompleteItem[] {
@@ -696,14 +773,16 @@ export class CombinedAutocompleteProvider implements AutocompleteProvider {
 				beforePrefix = currentLine.slice(0, cursorCol - liveAtPrefix.length);
 			}
 			// This is a file attachment completion
-			const newLine = `${beforePrefix + item.value} ${afterCursor}`;
+			const isDirectory = isDirectoryCompletionValue(item.value);
+			const suffix = isDirectory ? "" : " ";
+			const newLine = `${beforePrefix + item.value}${suffix}${afterCursor}`;
 			const newLines = [...lines];
 			newLines[cursorLine] = newLine;
 
 			return {
 				lines: newLines,
 				cursorLine,
-				cursorCol: beforePrefix.length + item.value.length + 1, // +1 for space
+				cursorCol: beforePrefix.length + item.value.length + suffix.length,
 			};
 		}
 
@@ -1042,7 +1121,7 @@ export class CombinedAutocompleteProvider implements AutocompleteProvider {
 				if (/(^|\/)\.git(\/|$)/.test(normalized)) {
 					return false;
 				}
-				return lowerQuery.length === 0 || fuzzyMatch(lowerQuery, normalized.toLowerCase());
+				return lowerQuery.length === 0 || subsequenceMatch(lowerQuery, normalized.toLowerCase());
 			});
 			// `fuzzyFind` is already capped via `maxResults` in
 			// `buildAutocompleteFuzzyDiscoveryProfile`; no extra slice here.
