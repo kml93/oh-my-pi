@@ -43,8 +43,8 @@ import { parseSlashCommand } from "../../slash-commands/helpers/parse";
 import { getTinyLocalModelSpec, isTinyLocalModelKey } from "../../tiny/models";
 import { tinyTitleClient } from "../../tiny/title-client";
 import type { TinyTitleProgressEvent } from "../../tiny/title-protocol";
-import { resolveApprovalModeCycle } from "../../tools/approval";
 import { resolveReadPath } from "../../tools/path-utils";
+import { resolveApprovalModeCycle } from "../../tools/approval";
 import { shortenPath, TRUNCATE_LENGTHS, truncateToWidth } from "@oh-my-pi/pi-tui/render/render-utils";
 import { vocalizer } from "../../tts/vocalizer";
 import {

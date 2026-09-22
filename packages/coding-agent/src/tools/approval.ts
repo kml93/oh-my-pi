@@ -56,10 +56,10 @@ type ApprovalSubject = Pick<AgentTool, "name" | "approval" | "formatApprovalDeta
 	readonly legacyName?: string;
 };
 
-const APPROVAL_MODES: ReadonlySet<ApprovalMode> = new Set(["always-ask", "write", "yolo"]);
+const VALID_APPROVAL_MODES: ReadonlySet<ApprovalMode> = new Set(["always-ask", "write", "yolo"]);
 
 function isApprovalMode(value: unknown): value is ApprovalMode {
-	return typeof value === "string" && APPROVAL_MODES.has(value as ApprovalMode);
+	return typeof value === "string" && VALID_APPROVAL_MODES.has(value as ApprovalMode);
 }
 
 function asPolicyMap(value: unknown): Record<string, unknown> {
