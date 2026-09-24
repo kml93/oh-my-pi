@@ -41,7 +41,16 @@ Never resolve conflicts originating from an open/in-flight PR branch directly in
 3. Validate the PR test suite.
 4. Merge the updated PR branch and `main` into `kml93`.
 
----
+### Generated Catalog Files (`rules.json` / `models.json`)
+
+Merge conflict on `packages/catalog/src/compat/rules.json` or `packages/catalog/src/models.json` → run the resolver on the conflicted tree (primary checkout or worktree):
+
+```bash
+scripts/resolve-catalog-conflicts.sh <repo-or-worktree-root>
+```
+
+- NEVER resolve these two files by hand; NEVER use `bun run gen:models` (network-dependent, non-deterministic).
+- Fresh worktree prerequisite: `setup-minimum-runtime-dev.sh` (native addons).
 
 ## Tracking PI
 
