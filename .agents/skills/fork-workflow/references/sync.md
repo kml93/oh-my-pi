@@ -43,14 +43,13 @@ Never resolve conflicts originating from an open/in-flight PR branch directly in
 
 ### Generated Catalog Files (`rules.json` / `models.json`)
 
-Merge conflict on `packages/catalog/src/compat/rules.json` or `packages/catalog/src/models.json` → run the resolver on the conflicted tree (primary checkout or worktree):
+Merge conflict on either file (happens on every upstream sync until the fork seed's PR lands upstream) → run the fixer on the conflicted tree (primary checkout or worktree):
 
 ```bash
-scripts/resolve-catalog-conflicts.sh <repo-or-worktree-root>
+scripts/fix-catalog.sh <repo-or-worktree-root>
 ```
 
 - NEVER resolve these two files by hand; NEVER use `bun run gen:models` (network-dependent, non-deterministic).
-- Fresh worktree prerequisite: `setup-minimum-runtime-dev.sh` (native addons).
 
 ## Tracking PI
 
