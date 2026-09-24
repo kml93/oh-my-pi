@@ -2,10 +2,16 @@
 
 ## [Unreleased]
 
+## [18.3.0] - 2026-09-24
+
 ### Added
 
 - Added shared Codex wire constants and residency-header handling for ChatGPT OAuth request integrations ([#10374](https://github.com/can1357/oh-my-pi/pull/10374) by [@kml93](https://github.com/kml93)).
 - Added `org-scoped-identity` and `oauth-token-env` rule support for auth providers
+- Added compaction support for the `claude-mythos-preview` model.
+- Added provider and authentication rule definitions for on-device Apple Foundation Models.
+- Added per-account discovery of Codex cyber access entitlements.
+- Added `org-scoped-identity` and `oauth-token-env` authentication rules for providers.
 
 ## [18.2.11] - 2026-09-23
 
