@@ -1094,7 +1094,7 @@ export class TUI extends Container {
 			| {
 					getFocusedTextEditor?: () => Pick<Editor, "submit"> | null;
 					submitFocusedTextEditor?: () => void;
-				}
+			  }
 			| null
 			| undefined;
 		if (
@@ -1154,7 +1154,7 @@ export class TUI extends Container {
 				windowTop: number;
 				altScreen: boolean;
 				cursor?: { x: number; y: number; visible?: boolean };
-			}
+		  }
 		| undefined {
 		return this.#debugPaint;
 	}
