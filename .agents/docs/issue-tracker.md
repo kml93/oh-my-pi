@@ -21,6 +21,7 @@ Before creating an issue or posting a GitHub comment, show the target and propos
 
 - "Publish to the issue tracker": create an issue on `kml93/oh-my-pi`, after confirmation.
 - "Fetch the relevant ticket": read the issue on `kml93/oh-my-pi`.
+- Bare `/implement`: browse all open issues in small pages through the interactive questionnaire, showing each ticket’s number, goal, and triage status. Let the user choose or request the next page; read the chosen ticket and clarify missing requirements before implementing. If none are open, ask for a spec or ticket.
 
 ## Wayfinding operations
 
