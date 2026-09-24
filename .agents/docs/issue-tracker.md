@@ -4,7 +4,7 @@ Issues and specs for this fork live in `kml93/oh-my-pi` GitHub Issues. Use `gh` 
 
 ## Conventions
 
-- Create: `gh issue create -R kml93/oh-my-pi --title "..." --body "..."`. Use a heredoc for multiline bodies.
+- Create: `gh issue create -R kml93/oh-my-pi --title "..." --body-file <file>`. Never a shell heredoc — heredocs execute backticks and mutilate the body.
 - Read: `gh issue view <number> -R kml93/oh-my-pi --comments`; fetch labels too.
 - List: `gh issue list -R kml93/oh-my-pi --state open --json number,title,body,labels,comments` with suitable filters.
 - Comment: `gh issue comment <number> -R kml93/oh-my-pi --body "..."`.
@@ -12,6 +12,14 @@ Issues and specs for this fork live in `kml93/oh-my-pi` GitHub Issues. Use `gh` 
 - Close: `gh issue close <number> -R kml93/oh-my-pi --comment "..."`.
 
 Before creating an issue or posting a GitHub comment, show the target and proposed text and obtain user confirmation, as required by `AGENTS.md`.
+
+## Language and local mirror protocol
+
+- Every issue or PR is first written as a French draft file (`draft@<slug_snake>.fr.md`) for direct IDE review; nothing is published without explicit approval. ADRs have no draft state — their flow lives in `.agents/docs/domain.md` (§ Naming).
+- After approval: write the English version, then publish the issue/PR with the English body only, via `--body-file` pointing at the `.en.md` mirror file.
+- Local mirrors: `.agents/issues/` (issues) and `.agents/prs/` (PRs), one file per language.
+- File naming for mirrors and drafts: see `.agents/docs/domain.md` (§ Naming).
+- Publication order: FR draft → approval → EN draft → publish → rename both files with the discovered number.
 
 ## Pull requests as a triage surface
 
