@@ -177,9 +177,9 @@ describe("STTController cloud transcription", () => {
 		);
 		const editor = makeEditor();
 
-		await controller.toggle(editor, makeOptions());
+		await controller.toggle(() => editor, editor, makeOptions());
 		onAudio?.(null, new Float32Array([0.5, -0.5]));
-		await controller.toggle(editor, makeOptions());
+		await controller.toggle(() => editor, editor, makeOptions());
 
 		expect(download).not.toHaveBeenCalled();
 		expect(transcribe).toHaveBeenCalledTimes(1);
