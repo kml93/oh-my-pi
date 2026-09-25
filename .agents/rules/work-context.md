@@ -6,6 +6,6 @@ trigger: always_on
 
 # Work Context
 
-- For issue tracking, publication, and bare `/implement` task selection, read `./.agents/docs/issue-tracker.md`.
+- For domain terms, architecture decisions, file layout, and naming rules (issues, PRs, ADRs, drafts, handoffs), read `./.agents/docs/domain.md`.
+- For GitHub operations, publication workflow, and bare `/implement` task selection, read `./.agents/docs/issue-tracker.md`.
 - For triage labels, read `./.agents/docs/triage-labels.md`.
-- For domain terms and decisions, read `./.agents/docs/domain.md`.
