@@ -22,6 +22,6 @@ Single repository context.
 - Issues: `<number>@<slug_snake>.<locale>.md` — number = GitHub issue number.
 - PRs: `<number>@<target>-<slug_snake>.<locale>.md` — number = GitHub PR number (`<target>`: `omp` upstream can1357, `kml93` fork-local).
 - Drafts (issues/PRs): `draft@...` replaces `<number>` in Issue/PR pattern, renamed with assigned number at publication.
-- Handoffs: `<slug_snake>.<locale>.md` — content only, no process narration; rules/skills stay out (deleted once consumed).
+- Handoffs: `<slug_snake>.<locale>.md` — content only, no process narration; rules/skills stay out (deleted once superseded by a published spec/issue/PR — never kept until the work is done).
 - ADRs: `<number>@<slug_snake>.<locale>.md` — bilingual twins, no draft state. FR written directly with next ID (scan max + 1, no reuse/renumber) for IDE review & edits; EN on approval.
 - Slugs: from H1 before punctuation (`:,-()—`), slugified (lowercase ASCII, strip diacritics, `_`).
