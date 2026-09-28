@@ -3,6 +3,10 @@
 ## [Unreleased]
 
 - `@` file completions now preserve a typed line-selector suffix (`@path:1-10`) when accepting a stale suggestion, while trailing filename characters no longer override the selected completion ([#10623](https://github.com/can1357/oh-my-pi/pull/10623) by [@kml93](https://github.com/kml93)).
+### Added
+
+- Added `statusLine.contextMetric` to the status line: the embedded context gauge, the `context_pct` segment, and the footer can label usage with used tokens (`45K/200K`) instead of a percentage; threshold colors and gauge fill are unchanged ([#13634](https://github.com/can1357/oh-my-pi/pull/13634) by [@kml93](https://github.com/kml93))
+
 ### Fixed
 
 - Fixed the `@` completion popup showing a `Searching…` placeholder while a refreshed file search is pending; the popup now stays hidden until results arrive, and Escape is no longer swallowed by it
