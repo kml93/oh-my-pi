@@ -13,25 +13,31 @@ import { resolveSttModelSpec, type SttModelKey } from "./models";
 import { evaluateSubmitTrigger } from "./submit-trigger";
 import { encodePcm16Wav } from "./wav";
 
+import { cfgSttLanguage, cfgSttSubmitTrigger } from "./settings";
+
 export type SttState = "idle" | "recording" | "transcribing";
 
-export interface ToggleOptions {
+/** How a capture reports progress and state to its host. */
+export interface SttCallbacks {
 	showWarning(msg: string): void;
 	showStatus(msg: string): void;
 	onStateChange(state: SttState): void;
-	submitEditor?(editor: Editor): void;
+	submitEditor?(editor: SttTarget): void;
 	subscribeFocus?(listener: () => void): () => void;
 }
 
-/** The slice of a text editor the controller drives. */
-export interface Editor {
-	insertText(text: string): void;
+export type ToggleOptions = SttCallbacks;
+
+/** The slice of a text input the controller dictates into. */
+export interface SttTarget {
 	setVolatileText(text: string): void;
-	clearVolatileText(): void;
 	commitVolatileText(text: string): void;
-	submit(): void;
+	clearVolatileText(): void;
 	deleteBeforeCursor(count: number): void;
+	submit(): void;
 }
+
+export type Editor = SttTarget;
 
 interface CaptureHandle {
 	stop(): void;
@@ -49,6 +55,50 @@ export interface STTControllerDependencies {
 	getSessionId?: () => string;
 }
 
+interface NormalizedTarget {
+	readonly resolve: () => SttTarget | null;
+	readonly fallback: SttTarget;
+	readonly routing: boolean;
+	readonly subscribeFocus?: ((listener: () => void) => () => void) | undefined;
+}
+
+interface DeliveryPolicy {
+	onPartial(text: string): void;
+	onSegment(text: string): void;
+	deliver(targetEditor: SttTarget | null, finalText: string): string;
+}
+
+function normalizeTarget(
+	editorOrResolver: SttTarget | (() => SttTarget | null),
+	optionsOrCallback: SttCallbacks | SttTarget,
+	maybeOptions?: SttCallbacks,
+): [NormalizedTarget, SttCallbacks] {
+	if (typeof editorOrResolver === "function") {
+		const resolve = editorOrResolver;
+		const fallback = optionsOrCallback as SttTarget;
+		const options = maybeOptions as SttCallbacks;
+		return [
+			{
+				resolve,
+				fallback,
+				routing: true,
+				subscribeFocus: options.subscribeFocus ? listener => options.subscribeFocus!(listener) : undefined,
+			},
+			options,
+		];
+	}
+	const editor = editorOrResolver;
+	const options = optionsOrCallback as SttCallbacks;
+	return [
+		{
+			resolve: () => editor,
+			fallback: editor,
+			routing: false,
+		},
+		options,
+	];
+}
+
 /** Coordinates native microphone capture with streaming local or buffered cloud transcription. */
 export class STTController {
 	#state: SttState = "idle";
@@ -60,15 +110,17 @@ export class STTController {
 	readonly #settings: Settings;
 	readonly #registry: SttRegistry | undefined;
 	readonly #getSessionId: (() => string) | undefined;
-	#resolveEditor: (() => Editor | null) | null = null;
-	#fallbackEditor: Editor | null = null;
+
+	#target: NormalizedTarget | null = null;
 	#unsubscribeFocus: (() => void) | null = null;
 	#lastPartial = "";
 
 	// Live streaming capture.
 	#stream: SttStreamHandle | null = null;
 	#streamRecorder: CaptureHandle | null = null;
-	#streamEditor: Editor | null = null;
+	#streamEditor: SttTarget | null = null;
+	/** Callbacks of the running capture, from the {@link start} that began it. */
+	#streamCallbacks: SttCallbacks | null = null;
 	#streamCommitted = false;
 	#streamAbort: AbortController | null = null;
 	#streamUtterance = "";
@@ -76,6 +128,72 @@ export class STTController {
 	// Buffered cloud capture.
 	#cloudModel: Model<Api> | null = null;
 	#cloudAudio: Float32Array[] = [];
+
+	readonly #directPolicy: DeliveryPolicy = {
+		onPartial: (text: string): void => {
+			this.#streamEditor?.setVolatileText(this.#prefixed(text));
+		},
+		onSegment: (text: string): void => {
+			const prefixed = this.#prefixed(text);
+			if (!prefixed) {
+				this.#streamEditor?.clearVolatileText();
+				return;
+			}
+			this.#streamEditor?.commitVolatileText(prefixed);
+			this.#streamCommitted = true;
+			this.#streamUtterance += prefixed;
+		},
+		deliver: (targetEditor: SttTarget | null, finalText: string): string => {
+			if (!this.#streamCommitted && finalText) {
+				const prefixed = this.#prefixed(finalText);
+				if (prefixed) {
+					targetEditor?.commitVolatileText(prefixed);
+					this.#streamCommitted = true;
+					this.#streamUtterance = prefixed;
+				}
+			}
+			this.#streamEditor?.clearVolatileText();
+			return this.#streamUtterance;
+		},
+	};
+
+	readonly #routingPolicy: DeliveryPolicy = {
+		onPartial: (text: string): void => {
+			this.#lastPartial = text;
+			if (this.#handleFocusChange()) return;
+			const preview = this.#currentVolatilePreview();
+			if (!preview) {
+				this.#streamEditor?.clearVolatileText();
+				return;
+			}
+			this.#streamEditor?.setVolatileText(preview);
+		},
+		onSegment: (text: string): void => {
+			this.#lastPartial = "";
+			const prefixed = this.#prefixed(text);
+			if (prefixed) {
+				this.#streamCommitted = true;
+				this.#streamUtterance += prefixed;
+			}
+			if (this.#handleFocusChange()) return;
+			if (this.#state !== "recording") return;
+			if (!this.#streamUtterance) {
+				this.#streamEditor?.clearVolatileText();
+				return;
+			}
+			this.#streamEditor?.setVolatileText(this.#streamUtterance);
+		},
+		deliver: (targetEditor: SttTarget | null, finalText: string): string => {
+			const transcript = (finalText || this.#streamUtterance).trim();
+			this.#streamEditor?.clearVolatileText();
+			if (transcript) {
+				targetEditor?.commitVolatileText(transcript);
+			}
+			return transcript;
+		},
+	};
+
+	#policy: DeliveryPolicy = this.#directPolicy;
 
 	/** Creates a controller; tests may replace the hardware capture boundary. */
 	constructor();
@@ -91,46 +209,90 @@ export class STTController {
 			this.#settings = dependencies?.settings ?? settings;
 			this.#registry = dependencies?.registry;
 			this.#getSessionId = dependencies?.getSessionId;
-		} else {
-			this.#createCapture = onAudio => new AudioCapture(16_000, onAudio);
-			this.#settings = createCaptureOrDependencies?.settings ?? settings;
-			this.#registry = createCaptureOrDependencies?.registry;
-			this.#getSessionId = createCaptureOrDependencies?.getSessionId;
+			return;
 		}
+		this.#createCapture = onAudio => new AudioCapture(16_000, onAudio);
+		this.#settings = createCaptureOrDependencies?.settings ?? settings;
+		this.#registry = createCaptureOrDependencies?.registry;
+		this.#getSessionId = createCaptureOrDependencies?.getSessionId;
 	}
 
 	get state(): SttState {
 		return this.#state;
 	}
 
-	#setState(state: SttState, options: ToggleOptions): void {
+	#setState(state: SttState, options: SttCallbacks): void {
 		this.#state = state;
 		options.onStateChange(state);
 	}
 
-	async toggle(resolveEditor: () => Editor | null, fallbackEditor: Editor, options: ToggleOptions): Promise<void> {
-		if (this.#toggling) {
-			if (this.#state === "idle" || this.#state === "recording") this.#stopAfterStart = true;
+	/** Start dictating into `editor` (or resolved editor), reporting to `options` until the capture ends. A no-op while a
+	 *  capture is starting, recording, or transcribing. */
+	async start(editor: SttTarget, options: SttCallbacks): Promise<void>;
+	async start(resolveEditor: () => SttTarget | null, fallbackEditor: SttTarget, options: SttCallbacks): Promise<void>;
+	async start(
+		editorOrResolver: SttTarget | (() => SttTarget | null),
+		optionsOrCallback: SttCallbacks | SttTarget,
+		maybeOptions?: SttCallbacks,
+	): Promise<void> {
+		const [target, options] = normalizeTarget(editorOrResolver, optionsOrCallback, maybeOptions);
+		await this.#startCapture(target, options);
+	}
+
+	/** Stop the running capture and transcribe it. A capture still starting stops as soon as it is
+	 *  up; otherwise a no-op unless recording. */
+	async stop(): Promise<void> {
+		if (this.#toggling && (this.#state === "idle" || this.#state === "recording")) {
+			this.#stopAfterStart = true;
 			return;
 		}
+		if (this.#toggling) {
+			return;
+		}
+		const callbacks = this.#streamCallbacks;
+		if (this.#state === "recording" && callbacks) {
+			await this.#transition(callbacks, () => this.#stop(callbacks));
+		}
+	}
+
+	/** Stop a capture that is starting or recording; otherwise start one. */
+	async toggle(editor: SttTarget, options: SttCallbacks): Promise<void>;
+	async toggle(resolveEditor: () => SttTarget | null, fallbackEditor: SttTarget, options: SttCallbacks): Promise<void>;
+	async toggle(
+		editorOrResolver: SttTarget | (() => SttTarget | null),
+		optionsOrCallback: SttCallbacks | SttTarget,
+		maybeOptions?: SttCallbacks,
+	): Promise<void> {
+		if (this.#state === "recording" || (this.#toggling && this.#state === "idle")) {
+			await this.stop();
+			return;
+		}
+		const [target, options] = normalizeTarget(editorOrResolver, optionsOrCallback, maybeOptions);
+		await this.#startCapture(target, options);
+	}
+
+	async #startCapture(target: NormalizedTarget, options: SttCallbacks): Promise<void> {
+		if (this.#state === "transcribing") {
+			options.showStatus("Transcription in progress...");
+		}
+		if (this.#toggling || this.#state !== "idle") {
+			return;
+		}
+		await this.#transition(options, () => this.#runStart(target, options));
+	}
+
+	/** Run one start/stop step, then honor a stop requested while it was in flight. */
+	async #transition(options: SttCallbacks, step: () => Promise<void>): Promise<void> {
 		this.#toggling = true;
 		try {
-			switch (this.#state) {
-				case "idle":
-					await this.#start(resolveEditor, fallbackEditor, options);
-					break;
-				case "recording":
-					await this.#stop(options);
-					break;
-				case "transcribing":
-					options.showStatus("Transcription in progress...");
-					break;
+			await step();
+			if (this.#state !== "recording") {
+				this.#stopAfterStart = false;
+				return;
 			}
-			if (this.#stopAfterStart && this.#state === "recording") {
+			if (this.#stopAfterStart) {
 				this.#stopAfterStart = false;
 				await this.#stop(options);
-			} else if (this.#state !== "recording") {
-				this.#stopAfterStart = false;
 			}
 		} finally {
 			this.#toggling = false;
@@ -147,31 +309,25 @@ export class STTController {
 		return resolveSttModelSpec(model?.id).key;
 	}
 
-	async #ensureDeps(options: ToggleOptions, modelKey = this.#resolveModelKey()): Promise<SttModelKey | null> {
+	async #ensureDeps(options: SttCallbacks, modelKey = this.#resolveModelKey()): Promise<SttModelKey | null> {
 		// Keyed on the resolved role model rather than a one-shot flag: changing
 		// modelRoles.dictation mid-session re-runs preflight for the new model.
 		if (this.#resolvedModelKey === modelKey) return modelKey;
 		try {
-			// Only clear the status line when preflight emitted progress; the
-			// cached-model fast path emits nothing.
-			let wroteStatus = false;
-			const status = (msg: string): void => {
-				wroteStatus = true;
-				options.showStatus(msg);
-			};
 			// Loading the multi-hundred-MB speech model into the worker is what made
 			// the old "Checking STT dependencies…" step slow. Don't pay it before
 			// recording: when the weights are already cached, start now and warm the
 			// model in the background — the stream/transcribe paths load it on demand
 			// (memoized in the worker) and it is hot by the time recording stops.
-			// Only a genuine first-use download blocks, with explicit progress, so we
-			// never record silently against missing weights.
-			if (await isSttModelCached(modelKey)) {
+			// Only a genuine first-use download blocks (its progress shows in the
+			// download HUD), so we never record silently against missing weights.
+			const cached = await isSttModelCached(modelKey);
+			if (cached) {
 				this.#warmModel(modelKey);
-			} else {
-				await downloadSttModel(modelKey, p => status(`Downloading speech model ${p.label} (${p.percent}%)`));
+				this.#resolvedModelKey = modelKey;
+				return modelKey;
 			}
-			if (wroteStatus) options.showStatus("");
+			await downloadSttModel(modelKey);
 			this.#resolvedModelKey = modelKey;
 			return modelKey;
 		} catch (err) {
@@ -198,10 +354,10 @@ export class STTController {
 		});
 	}
 
-	async #start(resolveEditor: () => Editor | null, fallbackEditor: Editor, options: ToggleOptions): Promise<void> {
+	async #runStart(target: NormalizedTarget, options: SttCallbacks): Promise<void> {
 		let model = this.#resolveModel();
 		if (model?.api === "openai-transcriptions") {
-			this.#startBuffered(resolveEditor, fallbackEditor, options, model);
+			this.#startBuffered(target, options, model);
 			return;
 		}
 		if (model && model.api !== "local-inference") {
@@ -213,7 +369,7 @@ export class STTController {
 		if (!modelKey) return;
 		model = this.#resolveModel();
 		if (model?.api === "openai-transcriptions") {
-			this.#startBuffered(resolveEditor, fallbackEditor, options, model);
+			this.#startBuffered(target, options, model);
 			return;
 		}
 		if (model && model.api !== "local-inference") {
@@ -225,33 +381,40 @@ export class STTController {
 			modelKey = await this.#ensureDeps(options, startModelKey);
 			if (!modelKey) return;
 		}
-		await this.#startStreaming(resolveEditor, fallbackEditor, options, modelKey);
+		await this.#startStreaming(target, options, modelKey);
 	}
 
-	async #stop(options: ToggleOptions): Promise<void> {
-		if (this.#cloudModel) await this.#stopBuffered(options);
-		else await this.#stopStreaming(options);
+	async #stop(options: SttCallbacks): Promise<void> {
+		if (this.#cloudModel) {
+			await this.#stopBuffered(options);
+			return;
+		}
+		await this.#stopStreaming(options);
 	}
 
-	#attachFocus(resolveEditor: () => Editor | null, fallbackEditor: Editor, options: ToggleOptions): void {
-		this.#resolveEditor = resolveEditor;
-		this.#fallbackEditor = fallbackEditor;
-		this.#streamEditor = resolveEditor();
+	#attachFocus(target: NormalizedTarget, options: SttCallbacks): void {
+		this.#target = target;
+		this.#policy = target.routing ? this.#routingPolicy : this.#directPolicy;
+		this.#streamCallbacks = options;
+		this.#streamEditor = target.resolve();
 		this.#lastPartial = "";
-		this.#unsubscribeFocus = options.subscribeFocus?.(() => this.#handleFocusChange()) || null;
+		this.#unsubscribeFocus = target.routing
+			? (target.subscribeFocus?.(() => this.#handleFocusChange()) ?? null)
+			: null;
 	}
 
 	#releaseFocus(): void {
 		this.#unsubscribeFocus?.();
 		this.#unsubscribeFocus = null;
-		this.#resolveEditor = null;
-		this.#fallbackEditor = null;
+		this.#target = null;
+		this.#policy = this.#directPolicy;
 		this.#lastPartial = "";
 	}
 
 	#handleFocusChange(): boolean {
 		if (this.#disposed || this.#state !== "recording") return false;
-		const nextEditor = this.#resolveEditor?.() || null;
+		if (!this.#target?.routing) return false;
+		const nextEditor = this.#target.resolve() ?? null;
 		if (nextEditor === this.#streamEditor) return false;
 		this.#streamEditor?.clearVolatileText();
 		this.#streamEditor = nextEditor;
@@ -262,13 +425,8 @@ export class STTController {
 
 	// ── Buffered cloud transcription ────────────────────────────────
 
-	#startBuffered(
-		resolveEditor: () => Editor | null,
-		fallbackEditor: Editor,
-		options: ToggleOptions,
-		model: Model<Api>,
-	): void {
-		this.#attachFocus(resolveEditor, fallbackEditor, options);
+	#startBuffered(target: NormalizedTarget, options: SttCallbacks, model: Model<Api>): void {
+		this.#attachFocus(target, options);
 		this.#streamCommitted = false;
 		this.#streamUtterance = "";
 		this.#streamAbort = new AbortController();
@@ -311,7 +469,7 @@ export class STTController {
 		logger.debug("STT buffered recording started", { model: `${model.provider}/${model.id}` });
 	}
 
-	async #stopBuffered(options: ToggleOptions): Promise<void> {
+	async #stopBuffered(options: SttCallbacks): Promise<void> {
 		const model = this.#cloudModel;
 		const recorder = this.#streamRecorder;
 		const abort = this.#streamAbort;
@@ -335,7 +493,7 @@ export class STTController {
 		let failed = false;
 		let finalText = "";
 		try {
-			const language = this.#settings.get("stt.language");
+			const language = cfgSttLanguage.get(this.#settings);
 			const result = await transcribeAudio(
 				model,
 				{
@@ -374,6 +532,7 @@ export class STTController {
 		this.#cloudAudio = [];
 		this.#streamRecorder = null;
 		this.#streamEditor = null;
+		this.#streamCallbacks = null;
 		this.#streamCommitted = false;
 		this.#streamAbort = null;
 		this.#streamUtterance = "";
@@ -381,6 +540,7 @@ export class STTController {
 	}
 
 	// ── Live streaming ──────────────────────────────────────────────
+
 	#currentVolatilePreview(): string {
 		const partial = this.#lastPartial.replace(/\s+/g, " ").trim();
 		if (!this.#streamUtterance) return partial;
@@ -388,21 +548,17 @@ export class STTController {
 		return `${this.#streamUtterance} ${partial}`;
 	}
 
-	/** Segments accumulate before final insertion; prefix each later segment with a space. */
+	/** Segment text gets a leading space once a prior segment is committed, so
+	 *  phrases join naturally; the first phrase is inserted at the cursor as-is. */
 	#prefixed(text: string): string {
 		const normalized = text.replace(/\s+/g, " ").trim();
 		if (!normalized) return "";
 		return this.#streamCommitted ? ` ${normalized}` : normalized;
 	}
 
-	async #startStreaming(
-		resolveEditor: () => Editor | null,
-		fallbackEditor: Editor,
-		options: ToggleOptions,
-		modelKey: SttModelKey,
-	): Promise<void> {
-		const language = this.#settings.get("stt.language");
-		this.#attachFocus(resolveEditor, fallbackEditor, options);
+	async #startStreaming(target: NormalizedTarget, options: SttCallbacks, modelKey: SttModelKey): Promise<void> {
+		const language = cfgSttLanguage.get(this.#settings);
+		this.#attachFocus(target, options);
 		this.#streamCommitted = false;
 		this.#streamUtterance = "";
 		this.#streamAbort = new AbortController();
@@ -411,24 +567,11 @@ export class STTController {
 			signal: this.#streamAbort.signal,
 			onPartial: text => {
 				if (this.#disposed || this.#state !== "recording") return;
-				this.#lastPartial = text;
-				if (this.#handleFocusChange()) return;
-				const preview = this.#currentVolatilePreview();
-				if (preview) this.#streamEditor?.setVolatileText(preview);
-				if (!preview) this.#streamEditor?.clearVolatileText();
+				this.#policy.onPartial(text);
 			},
 			onSegment: text => {
 				if (this.#disposed) return;
-				this.#lastPartial = "";
-				const prefixed = this.#prefixed(text);
-				if (prefixed) {
-					this.#streamCommitted = true;
-					this.#streamUtterance += prefixed;
-				}
-				if (this.#handleFocusChange()) return;
-				if (this.#state !== "recording") return;
-				if (this.#streamUtterance) this.#streamEditor?.setVolatileText(this.#streamUtterance);
-				else this.#streamEditor?.clearVolatileText();
+				this.#policy.onSegment(text);
 			},
 		});
 		this.#stream = stream;
@@ -470,7 +613,7 @@ export class STTController {
 		logger.debug("STT live recording started", { modelKey });
 	}
 
-	async #stopStreaming(options: ToggleOptions): Promise<void> {
+	async #stopStreaming(options: SttCallbacks): Promise<void> {
 		const stream = this.#stream;
 		const recorder = this.#streamRecorder;
 		if (!stream) {
@@ -513,31 +656,46 @@ export class STTController {
 		this.#stream = null;
 		this.#streamRecorder = null;
 		this.#streamEditor = null;
+		this.#streamCallbacks = null;
 		this.#streamCommitted = false;
 		this.#streamAbort = null;
 		this.#streamUtterance = "";
 		this.#releaseFocus();
 	}
 
-	#finishTranscript(finalText: string, failed: boolean, options: ToggleOptions): void {
-		const focusedEditor = this.#resolveEditor?.() || null;
-		const targetEditor = focusedEditor || this.#fallbackEditor;
-		let transcript = this.#streamUtterance;
-		if (finalText) transcript = finalText;
-		transcript = transcript.trim();
-		this.#streamEditor?.clearVolatileText();
-		if (transcript) targetEditor?.commitVolatileText(transcript);
+	#updateStatusAfterDelivery(transcript: string, failed: boolean, isFallback: boolean, options: SttCallbacks): void {
+		if (failed) return;
+		if (!transcript) {
+			options.showStatus("No speech detected.");
+			return;
+		}
+		if (isFallback) {
+			options.showStatus("Dictation inserted into composer draft.");
+			return;
+		}
+		options.showStatus("");
+	}
 
-		if (!failed && !transcript) options.showStatus("No speech detected.");
-		if (!failed && transcript && !focusedEditor) options.showStatus("Dictation inserted into composer draft.");
-		if (!failed && transcript && focusedEditor) options.showStatus("");
+	#finishTranscript(finalText: string, failed: boolean, options: SttCallbacks): void {
+		const target = this.#target;
+		const focused = target?.resolve() ?? null;
+		const targetEditor = focused ?? target?.fallback ?? null;
+		const isFallback = Boolean(target?.routing && !focused);
+
+		const transcript = this.#policy.deliver(targetEditor, finalText);
+
+		this.#updateStatusAfterDelivery(transcript, failed, isFallback, options);
 
 		if (!transcript || failed || !targetEditor) return;
-		const trigger = this.#settings.get("stt.submitTrigger");
+		const trigger = cfgSttSubmitTrigger.get(this.#settings);
 		const { submit, trimTrailing } = evaluateSubmitTrigger(transcript, trigger);
 		if (trimTrailing > 0) targetEditor.deleteBeforeCursor(trimTrailing);
-		if (submit && options.submitEditor) options.submitEditor(targetEditor);
-		if (submit && !options.submitEditor) targetEditor.submit();
+		if (!submit) return;
+		if (options.submitEditor) {
+			options.submitEditor(targetEditor);
+			return;
+		}
+		targetEditor.submit();
 	}
 
 	dispose(): void {

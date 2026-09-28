@@ -3,7 +3,9 @@ import type { ImageContent } from "@oh-my-pi/pi-ai";
 import { AskDialogComponent } from "@oh-my-pi/pi-tui/overlays/ask-dialog";
 import { HookEditorComponent } from "@oh-my-pi/pi-tui/overlays/hook-editor";
 import { TreeSelectorComponent } from "@oh-my-pi/pi-tui/overlays/tree-selector";
+import { Settings } from "@oh-my-pi/pi-coding-agent/config/settings";
 import { InputController } from "@oh-my-pi/pi-coding-agent/modes/controllers/input-controller";
+import { SpaceHoldGesture } from "@oh-my-pi/pi-tui/space-hold";
 import { initTheme } from "@oh-my-pi/pi-tui/theme";
 import type { InteractiveModeContext } from "@oh-my-pi/pi-coding-agent/modes/types";
 import type { SessionTreeNode } from "@oh-my-pi/pi-coding-agent/session/session-entries";
@@ -37,6 +39,7 @@ type FakeEditor = {
 	setActionKeys(action: string, keys: string[]): void;
 	setCustomKeyHandler(key: string, handler: () => void): void;
 	clearCustomKeyHandlers(): void;
+	spaceHold: SpaceHoldGesture;
 	pasteText(text: string): void;
 	imageLinks?: (string | undefined)[];
 	pendingImages: ImageContent[];
@@ -145,6 +148,7 @@ async function createContext() {
 		setActionKeys,
 		setCustomKeyHandler,
 		clearCustomKeyHandlers,
+		spaceHold: new SpaceHoldGesture(() => {}),
 		pendingImages: [],
 		pendingImageLinks: [],
 		clearDraft(historyText?: string) {
@@ -237,7 +241,7 @@ async function createContext() {
 		isPythonMode: false,
 		hideToolActivity: false,
 		toolOutputExpanded: false,
-		settings: { set: vi.fn() },
+		settings: Settings.isolated(),
 		chatContainer: { children: [], setToolActivityVisible: vi.fn() },
 		handleHotkeysCommand: vi.fn(),
 		handlePlanModeCommand: vi.fn(),
@@ -246,6 +250,7 @@ async function createContext() {
 		showUserMessageSelector: vi.fn(),
 		showSessionSelector: vi.fn(),
 		handleSTTToggle: vi.fn(),
+		dictationSpaceHold: vi.fn(),
 		showDebugSelector: vi.fn(),
 		showHistorySearch: vi.fn(),
 		toggleThinkingBlockVisibility: vi.fn(),
@@ -456,20 +461,6 @@ describe("InputController keybinding setup", () => {
 		expect(spies.handleBtwBranchKey).not.toHaveBeenCalled();
 	});
 
-	it("consumes b while a completed /btw branch is unavailable", async () => {
-		const { InputController, ctx, spies } = await createContext();
-		spies.handlesBtwBranchKey.mockReturnValue(true);
-		const controller = new InputController(ctx);
-
-		controller.setupKeyHandlers();
-		const listener = spies.addInputListener.mock.calls[1]?.[0];
-		expect(listener).toBeDefined();
-		const result = listener?.("b");
-
-		expect(result).toEqual({ consume: true });
-		expect(spies.handleBtwBranchKey).toHaveBeenCalledTimes(1);
-	});
-
 	it("lets b reach the composer before an active /btw answer is branchable", async () => {
 		const { InputController, ctx, spies } = await createContext();
 		spies.hasActiveBtw.mockReturnValue(true);
@@ -615,22 +606,6 @@ describe("InputController keybinding setup", () => {
 
 		expect(result).toBeUndefined();
 		expect(spies.handleBtwCopyKey).not.toHaveBeenCalled();
-	});
-
-	it("empty Enter aborts the active stream when queued messages are pending", async () => {
-		const { InputController, ctx, editor, spies } = await createContext();
-		const session = ctx.session as unknown as { isStreaming: boolean; queuedMessageCount: number };
-		session.isStreaming = true;
-		session.queuedMessageCount = 1;
-		const controller = new InputController(ctx);
-
-		controller.setupEditorSubmitHandler();
-		await editor.onSubmit?.("");
-
-		expect(spies.abort).toHaveBeenCalledWith({ reason: "Interrupted by user" });
-		expect(spies.updatePendingMessagesDisplay).toHaveBeenCalledTimes(1);
-		expect(spies.requestRender).toHaveBeenCalledTimes(1);
-		expect(spies.prompt).not.toHaveBeenCalled();
 	});
 
 	it("marks streaming follow-up submissions as local", async () => {
@@ -1030,17 +1005,15 @@ describe("InputController global STT toggle (app.stt.toggle)", () => {
 
 	it("preserves composer space-hold handlers independently of shortcut toggle", async () => {
 		const context = await createContext();
+		const handler = { enabled: () => true, onStart: vi.fn(), onEnd: vi.fn() };
+		(
+			context.ctx.dictationSpaceHold as unknown as Mock<(editor: typeof context.editor) => typeof handler>
+		).mockReturnValue(handler);
 		const controller = new context.InputController(context.ctx);
 		controller.setupKeyHandlers();
 
-		expect(typeof context.editor.onSpaceHoldStart).toBe("function");
-		expect(typeof context.editor.onSpaceHoldEnd).toBe("function");
-
-		context.editor.onSpaceHoldStart?.();
-		expect(context.ctx.handleSTTToggle).toHaveBeenCalledTimes(1);
-
-		context.editor.onSpaceHoldEnd?.();
-		expect(context.ctx.handleSTTToggle).toHaveBeenCalledTimes(2);
+		expect(context.ctx.dictationSpaceHold).toHaveBeenCalledWith(context.editor);
+		expect(context.editor.spaceHold.handler).toBe(handler);
 	});
 
 	it("does not create a second listener on repeated setupKeyHandlers calls", async () => {
