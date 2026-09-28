@@ -41,7 +41,7 @@ addon_is_current() {
   file=$1
   [ -f "$file" ] || return 1
   sentinel=__piNativesV$(printf '%s' "$version" | tr '.-' '__')
-  python3 -c 'import sys; data = open(sys.argv[1], "rb").read(); sys.exit(0 if sys.argv[2].encode() in data else 1)' "$file" "$sentinel" 2>/dev/null
+  python3 -c 'import sys; data = open(sys.argv[1], "rb").read(); sentinel = sys.argv[2].encode(); stamp = f"PI_NATIVES_VERSION_STAMP:{sys.argv[3]}\x00".encode(); sys.exit(0 if (sentinel in data or stamp in data) else 1)' "$file" "$sentinel" "$version" 2>/dev/null
 }
 
 cache_is_current() {
