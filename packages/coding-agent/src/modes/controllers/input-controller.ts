@@ -43,6 +43,8 @@ import { executeBuiltinSlashCommand, lookupBuiltinSlashCommand } from "../../sla
 import { parseSlashCommand, parseSubcommand } from "../../slash-commands/helpers/parse";
 import { isTinyLocalModelKey } from "../../tiny/models";
 import { tinyTitleClient } from "../../tiny/title-client";
+import { resolveApprovalModeCycle } from "../../tools/approval";
+import { cfgToolsApprovalMode } from "../../tools/settings";
 import { resolveReadPath } from "../../tools/path-utils";
 import { shortenPath, TRUNCATE_LENGTHS, truncateToWidth } from "@oh-my-pi/pi-tui/render/render-utils";
 import { vocalizer } from "../../tts/vocalizer";
@@ -579,6 +581,10 @@ export class InputController {
 		this.ctx.editor.setActionKeys("app.suspend", this.ctx.keybindings.getKeys("app.suspend"));
 		this.ctx.editor.onSuspend = () => this.handleCtrlZ();
 		this.ctx.editor.setActionKeys("app.thinking.cycle", this.ctx.keybindings.getKeys("app.thinking.cycle"));
+		this.ctx.editor.setActionKeys("app.approval.cycle", this.ctx.keybindings.getKeys("app.approval.cycle"));
+		this.ctx.editor.onCycleApprovalMode = () => this.cycleApprovalMode();
+		this.ctx.editor.setActionKeys("app.settings.open", this.ctx.keybindings.getKeys("app.settings.open"));
+		this.ctx.editor.onOpenSettings = () => this.ctx.showSettingsSelector();
 		this.ctx.editor.onCycleThinkingLevel = () => {
 			hintUsage.record("effort");
 			this.cycleThinkingLevel();
@@ -2376,6 +2382,15 @@ export class InputController {
 		}
 	}
 
+	cycleApprovalMode(): void {
+		const result = resolveApprovalModeCycle(cfgToolsApprovalMode.get(settings), this.ctx.session.autoApprove);
+		if (result.kind === "locked") {
+			this.ctx.showStatus("Approval mode locked by --yolo/--auto-approve; restart without the flag to change it");
+			return;
+		}
+		cfgToolsApprovalMode.set(settings, result.mode);
+		this.ctx.showStatus(`Approval mode: ${result.mode}`);
+	}
 	cycleThinkingLevel(): void {
 		if (this.ctx.focusedAgentId) {
 			this.ctx.showStatus(
