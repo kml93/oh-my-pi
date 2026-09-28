@@ -19,6 +19,7 @@ import { $flag } from "@oh-my-pi/pi-utils/env";
 import * as logger from "@oh-my-pi/pi-utils/logger";
 import * as postmortem from "@oh-my-pi/pi-utils/postmortem";
 import { Editor } from "./components/editor";
+import { Input } from "./components/input";
 import { DEFAULT_MAX_INLINE_IMAGES, ImageBudget } from "./components/image";
 import { TuiDebugServer } from "./debug-server";
 import { isKeyRelease, matchesKey } from "./keys";
@@ -114,6 +115,43 @@ type InputListenerResult = { consume?: boolean; data?: string } | undefined;
 type InputListener = (data: string) => InputListenerResult;
 type StartListener = () => void;
 type FocusListener = () => void;
+
+/** The standardized speech-to-text dictation surface. */
+export interface SttTarget {
+	setVolatileText(text: string): void;
+	commitVolatileText(text: string): void;
+	clearVolatileText(): void;
+	deleteBeforeCursor(count: number): void;
+	submit(): void;
+}
+
+/** A text input the STT router can dictate into: the standardized dictation
+ *  surface plus the text access router consumers rely on. */
+export interface RouterTextEditor extends Component, SttTarget {
+	insertText(text: string): void;
+	getText(): string;
+}
+
+export type TextEditorComponent = RouterTextEditor | Editor | Input;
+
+export function isTextEditorComponent(component: unknown): component is TextEditorComponent {
+	if (!component || typeof component !== "object") {
+		return false;
+	}
+	if (component instanceof Editor || component instanceof Input) {
+		return true;
+	}
+	const candidate = component as Record<string, unknown>;
+	return (
+		typeof candidate.setVolatileText === "function" &&
+		typeof candidate.commitVolatileText === "function" &&
+		typeof candidate.clearVolatileText === "function" &&
+		typeof candidate.deleteBeforeCursor === "function" &&
+		typeof candidate.submit === "function" &&
+		typeof candidate.insertText === "function" &&
+		typeof candidate.getText === "function"
+	);
+}
 
 export interface RenderTimer {
 	cancel(): void;
@@ -797,7 +835,7 @@ export class TUI extends Container {
 	#startListeners = new Set<StartListener>();
 	#paintListeners = new Set<PaintListener>();
 	#focusListeners = new Set<FocusListener>();
-	#lastObservedFocusedEditor: Editor | null = null;
+	#lastObservedFocusedEditor: TextEditorComponent | null = null;
 	#isNotifyingFocusListeners = false;
 
 	/** Global callback for debug key (Shift+Ctrl+D). Called before input is forwarded to focused component. */
@@ -1075,38 +1113,42 @@ export class TUI extends Container {
 	}
 
 	/** Resolve the active text editor, whether directly focused or owned by a focused component. */
-	getFocusedTextEditor(): Editor | null {
+	getFocusedTextEditor(): TextEditorComponent | null {
 		const focused = this.#focusedComponent;
 		if (!focused) {
 			return null;
 		}
-		if (focused instanceof Editor) {
+		if (isTextEditorComponent(focused)) {
 			return focused;
 		}
-		const owner = focused as { getFocusedTextEditor?: () => Editor | null };
-		if (typeof owner.getFocusedTextEditor === "function") {
-			return owner.getFocusedTextEditor() ?? null;
+		const owner = focused as { getFocusedTextEditor?: () => TextEditorComponent | null };
+		if (typeof owner.getFocusedTextEditor !== "function") {
+			return null;
 		}
-		return null;
+		const candidate = owner.getFocusedTextEditor();
+		if (!candidate || !isTextEditorComponent(candidate)) {
+			return null;
+		}
+		return candidate;
 	}
 
 	/** Submit the given text editor, delegating to its owner if the owner currently owns it. */
-	submitFocusedTextEditor(editor: Pick<Editor, "submit">): void {
+	submitFocusedTextEditor(editor: Pick<SttTarget, "submit">): void {
 		const owner = this.#focusedComponent as
 			| {
-					getFocusedTextEditor?: () => Pick<Editor, "submit"> | null;
-					submitFocusedTextEditor?: () => void;
+					getFocusedTextEditor?: () => Pick<SttTarget, "submit"> | null;
+					submitFocusedTextEditor?: (editor?: Pick<SttTarget, "submit">) => void;
 			  }
 			| null
 			| undefined;
 		if (
 			owner &&
-			!(owner instanceof Editor) &&
+			!isTextEditorComponent(owner) &&
 			typeof owner.getFocusedTextEditor === "function" &&
 			owner.getFocusedTextEditor() === editor &&
 			typeof owner.submitFocusedTextEditor === "function"
 		) {
-			owner.submitFocusedTextEditor();
+			owner.submitFocusedTextEditor(editor);
 			return;
 		}
 		editor.submit();

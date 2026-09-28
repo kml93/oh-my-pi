@@ -1005,17 +1005,15 @@ describe("InputController global STT toggle (app.stt.toggle)", () => {
 
 	it("preserves composer space-hold handlers independently of shortcut toggle", async () => {
 		const context = await createContext();
+		const handler = { enabled: () => true, onStart: vi.fn(), onEnd: vi.fn() };
+		(
+			context.ctx.dictationSpaceHold as unknown as Mock<(editor: typeof context.editor) => typeof handler>
+		).mockReturnValue(handler);
 		const controller = new context.InputController(context.ctx);
 		controller.setupKeyHandlers();
 
-		expect(typeof context.editor.onSpaceHoldStart).toBe("function");
-		expect(typeof context.editor.onSpaceHoldEnd).toBe("function");
-
-		context.editor.onSpaceHoldStart?.();
-		expect(context.ctx.handleSTTToggle).toHaveBeenCalledTimes(1);
-
-		context.editor.onSpaceHoldEnd?.();
-		expect(context.ctx.handleSTTToggle).toHaveBeenCalledTimes(2);
+		expect(context.ctx.dictationSpaceHold).toHaveBeenCalledWith(context.editor);
+		expect(context.editor.spaceHold.handler).toBe(handler);
 	});
 
 	it("does not create a second listener on repeated setupKeyHandlers calls", async () => {

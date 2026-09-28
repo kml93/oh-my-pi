@@ -263,7 +263,7 @@ describe("AgentsHub configuration strips", () => {
 	});
 
 	test("active create-description editor receives text via getFocusedTextEditor and mirrors it when submitting Enter", async () => {
-		const settings = createSettings();
+		const settings = new TestSettings();
 		const { hub } = await createHub(settings);
 
 		// Hub starts on the agent list; no active text editor initially
