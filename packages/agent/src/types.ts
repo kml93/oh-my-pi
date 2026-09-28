@@ -299,6 +299,14 @@ export interface AgentLoopConfig extends SimpleStreamOptions {
 	waitForSteeringMessages?: (signal?: AbortSignal) => Promise<void>;
 
 	/**
+	 * Called when live steering dequeues messages via {@link getSteeringMessages}
+	 * for the response being streamed. The loop records them in the transcript
+	 * after that response (or its tool batch); an abort before then leaves them
+	 * unrecorded for the host to requeue.
+	 */
+	onLiveSteeringTaken?: (messages: AgentMessage[]) => void;
+
+	/**
 	 * Peeks whether IRC messages should interrupt an interruptible waiting tool.
 	 *
 	 * Uses the same delivery rules as steering: the poll is non-consuming, only
@@ -432,6 +440,12 @@ export interface AgentLoopConfig extends SimpleStreamOptions {
 	 * model's text output back into canonical `toolCall` blocks.
 	 */
 	dialect?: Dialect;
+	/**
+	 * Per-call owned-dialect resolver, read once per LLM call with the model
+	 * being requested. Authoritative when set: its return value (including
+	 * `undefined` = native tool calling) replaces the static {@link dialect}.
+	 */
+	getDialect?: (model: Model) => Dialect | undefined;
 	/**
 	 * When owned (in-band) tool calling is active and the model starts
 	 * fabricating a tool result inside its own turn, control how the loop reacts:

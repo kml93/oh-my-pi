@@ -6,8 +6,10 @@ import type { Model } from "@oh-my-pi/pi-catalog/types";
 import { Settings, settings } from "@oh-my-pi/pi-coding-agent/config/settings";
 import * as asrClient from "@oh-my-pi/pi-coding-agent/stt/asr-client";
 import * as downloader from "@oh-my-pi/pi-coding-agent/stt/downloader";
-import { STTController, type Editor } from "@oh-my-pi/pi-coding-agent/stt/stt-controller";
+import { STTController } from "@oh-my-pi/pi-coding-agent/stt/stt-controller";
 import { beginSettingsTest, restoreSettingsTestState, type SettingsTestState } from "./helpers/settings-test-state";
+
+import { cfgSttLanguage, cfgSttSubmitTrigger } from "@oh-my-pi/pi-coding-agent/stt/settings";
 
 const ZERO_USAGE = {
 	input: 0,
@@ -53,7 +55,7 @@ describe("STTController cloud transcription", () => {
 	beforeEach(async () => {
 		state = beginSettingsTest();
 		await Settings.init({ inMemory: true });
-		settings.set("stt.submitTrigger", "never");
+		cfgSttSubmitTrigger.set(settings, "never");
 	});
 
 	afterEach(() => {
@@ -65,7 +67,7 @@ describe("STTController cloud transcription", () => {
 	it("buffers microphone PCM into a valid mono 16-bit WAV and commits the cloud transcript", async () => {
 		const model = getBundledModel("openai", "whisper-1");
 		settings.setModelRole("dictation", "openai/whisper-1");
-		settings.set("stt.language", "en");
+		cfgSttLanguage.set(settings, "en");
 		const registry = registryFor(model);
 		const transcribe = vi.spyOn(transcription, "transcribeAudio").mockResolvedValue({
 			text: "cloud transcript",
@@ -83,9 +85,9 @@ describe("STTController cloud transcription", () => {
 		const editor = makeEditor();
 		const options = makeOptions();
 
-		await controller.toggle(() => editor, editor, options);
+		await controller.toggle(editor, options);
 		onAudio?.(null, new Float32Array([-1, -0.5, 0, 0.5, 1]));
-		await controller.toggle(() => editor, editor, options);
+		await controller.toggle(editor, options);
 
 		expect(stopCapture).toHaveBeenCalledTimes(1);
 		expect(transcribe).toHaveBeenCalledTimes(1);
@@ -147,15 +149,34 @@ describe("STTController cloud transcription", () => {
 			{ settings, registry, getSessionId: () => "session-2" },
 		);
 
-		const editor = makeEditor();
-		const options = makeOptions();
-		await controller.toggle(() => editor, editor, options);
+		await controller.toggle(makeEditor(), makeOptions());
 		onAudio?.(null, new Float32Array([0.25]));
-		const stopping = controller.toggle(() => editor, editor, options);
+		const stopping = controller.toggle(makeEditor(), makeOptions());
 		expect(requestSignal?.aborted).toBe(false);
 		controller.dispose();
 		expect(requestSignal?.aborted).toBe(true);
 		await stopping;
+	});
+
+	it("keeps the mic off after a hold that begins and ends while the previous clip is transcribing", async () => {
+		const model = getBundledModel("openai", "whisper-1");
+		settings.setModelRole("dictation", "openai/whisper-1");
+		const transcribed = Promise.withResolvers<TranscriptionResult>();
+		vi.spyOn(transcription, "transcribeAudio").mockReturnValue(transcribed.promise);
+		const capture = vi.fn(() => ({ stop: vi.fn() }));
+		controller = new STTController(capture, { settings, registry: registryFor(model) });
+		const editor = makeEditor();
+
+		await controller.start(editor, makeOptions());
+		const transcribing = controller.stop();
+		await controller.start(editor, makeOptions());
+		transcribed.resolve({ text: "first clip", usage: ZERO_USAGE });
+		await transcribing;
+		await controller.stop();
+
+		expect(controller.state).toBe("idle");
+		expect(capture).toHaveBeenCalledTimes(1);
+		expect(editor.commitVolatileText).toHaveBeenCalledWith("first clip");
 	});
 
 	it("routes the Codex subscription model through buffered cloud transcription without local dependencies", async () => {
@@ -177,9 +198,9 @@ describe("STTController cloud transcription", () => {
 		);
 		const editor = makeEditor();
 
-		await controller.toggle(() => editor, editor, makeOptions());
+		await controller.toggle(editor, makeOptions());
 		onAudio?.(null, new Float32Array([0.5, -0.5]));
-		await controller.toggle(() => editor, editor, makeOptions());
+		await controller.toggle(editor, makeOptions());
 
 		expect(download).not.toHaveBeenCalled();
 		expect(transcribe).toHaveBeenCalledTimes(1);
@@ -213,77 +234,14 @@ describe("STTController cloud transcription", () => {
 		const options = makeOptions();
 		const samples = new Float32Array([0.1, -0.1]);
 
-		await controller.toggle(() => editor, editor, options);
+		await controller.toggle(editor, options);
 		onAudio?.(null, samples);
-		await controller.toggle(() => editor, editor, options);
+		await controller.toggle(editor, options);
 
 		expect(startStream).toHaveBeenCalledWith("whisper-base", expect.anything());
 		expect(pushAudio).toHaveBeenCalledWith(samples);
 		expect(stop).toHaveBeenCalledTimes(1);
 		expect(cloudTranscribe).not.toHaveBeenCalled();
 		expect(editor.commitVolatileText).toHaveBeenCalledWith("local transcript");
-	});
-
-	it("targets the currently focused editor at stop instead of the initial editor", async () => {
-		const model = getBundledModel("openai", "whisper-1");
-		settings.setModelRole("dictation", "openai/whisper-1");
-		const registry = registryFor(model);
-		vi.spyOn(transcription, "transcribeAudio").mockResolvedValue({
-			text: "switched field cloud text",
-			usage: ZERO_USAGE,
-		});
-		let onAudio: ((error: Error | null, samples: Float32Array) => void) | undefined;
-		controller = new STTController(
-			callback => {
-				onAudio = callback;
-				return { stop: vi.fn() };
-			},
-			{ settings, registry, getSessionId: () => "session-focus" },
-		);
-		const initialEditor = makeEditor();
-		const focusedEditor = makeEditor();
-		const fallbackComposer = makeEditor();
-		let currentFocus: Editor | null = initialEditor;
-		const options = makeOptions();
-
-		await controller.toggle(() => currentFocus, fallbackComposer, options);
-		onAudio?.(null, new Float32Array([0.1]));
-		currentFocus = focusedEditor;
-		await controller.toggle(() => currentFocus, fallbackComposer, options);
-
-		expect(focusedEditor.commitVolatileText).toHaveBeenCalledWith("switched field cloud text");
-		expect(initialEditor.commitVolatileText).not.toHaveBeenCalled();
-		expect(fallbackComposer.commitVolatileText).not.toHaveBeenCalled();
-	});
-
-	it("falls back to composer editor with status message when no field holds focus at stop", async () => {
-		const model = getBundledModel("openai", "whisper-1");
-		settings.setModelRole("dictation", "openai/whisper-1");
-		const registry = registryFor(model);
-		vi.spyOn(transcription, "transcribeAudio").mockResolvedValue({
-			text: "unfocused cloud text",
-			usage: ZERO_USAGE,
-		});
-		let onAudio: ((error: Error | null, samples: Float32Array) => void) | undefined;
-		controller = new STTController(
-			callback => {
-				onAudio = callback;
-				return { stop: vi.fn() };
-			},
-			{ settings, registry, getSessionId: () => "session-fallback" },
-		);
-		const initialEditor = makeEditor();
-		const fallbackComposer = makeEditor();
-		let currentFocus: Editor | null = initialEditor;
-		const options = makeOptions();
-
-		await controller.toggle(() => currentFocus, fallbackComposer, options);
-		onAudio?.(null, new Float32Array([0.1]));
-		currentFocus = null;
-		await controller.toggle(() => currentFocus, fallbackComposer, options);
-
-		expect(fallbackComposer.commitVolatileText).toHaveBeenCalledWith("unfocused cloud text");
-		expect(initialEditor.commitVolatileText).not.toHaveBeenCalled();
-		expect(options.showStatus).toHaveBeenCalledWith("Dictation inserted into composer draft.");
 	});
 });
