@@ -1,5 +1,5 @@
 import type { ApiKeyResolver } from "@oh-my-pi/pi-ai";
-import { transcribeAudio } from "@oh-my-pi/pi-ai/transcription";
+import { isCloudTranscriptionApi, transcribeAudio } from "@oh-my-pi/pi-ai/transcription";
 import type { Api, Model } from "@oh-my-pi/pi-catalog/types";
 import { AudioCapture } from "@oh-my-pi/pi-natives";
 import type { ModelBrowserRegistry } from "@oh-my-pi/pi-tui/overlays/model-browser";
@@ -356,7 +356,7 @@ export class STTController {
 
 	async #runStart(target: NormalizedTarget, options: SttCallbacks): Promise<void> {
 		let model = this.#resolveModel();
-		if (model?.api === "openai-transcriptions") {
+		if (model && isCloudTranscriptionApi(model.api)) {
 			this.#startBuffered(target, options, model);
 			return;
 		}
@@ -368,7 +368,7 @@ export class STTController {
 		let modelKey = await this.#ensureDeps(options, this.#resolveModelKey(model));
 		if (!modelKey) return;
 		model = this.#resolveModel();
-		if (model?.api === "openai-transcriptions") {
+		if (model && isCloudTranscriptionApi(model.api)) {
 			this.#startBuffered(target, options, model);
 			return;
 		}
