@@ -31,6 +31,7 @@ type FakeEditor = {
 	onSpaceHoldStart?: () => void;
 	onCycleApprovalMode?: () => void;
 	onOpenSettings?: () => void;
+	onSpaceHoldEnd?: () => void;
 	setText(text: string): void;
 	getText(): string;
 	getExpandedText(): string;
