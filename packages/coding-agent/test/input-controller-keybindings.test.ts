@@ -10,6 +10,7 @@ import { initTheme } from "@oh-my-pi/pi-tui/theme";
 import type { InteractiveModeContext } from "@oh-my-pi/pi-coding-agent/modes/types";
 import type { SessionTreeNode } from "@oh-my-pi/pi-coding-agent/session/session-entries";
 import { type KeyId, matchesKey } from "@oh-my-pi/pi-tui";
+import { cfgToolsApprovalMode } from "@oh-my-pi/pi-coding-agent/tools/settings";
 import manualContinuePrompt from "../src/prompts/system/manual-continue.md" with { type: "text" };
 
 type FakeEditor = {
@@ -29,6 +30,7 @@ type FakeEditor = {
 	onChange?: (text: string) => void;
 	onSubmit?: (text: string) => Promise<void>;
 	onSpaceHoldStart?: () => void;
+	onCycleApprovalMode?: () => void;
 	onSpaceHoldEnd?: () => void;
 	setText(text: string): void;
 	getText(): string;
@@ -75,6 +77,7 @@ async function createContext() {
 		"app.clipboard.pasteImage": ["ctrl+v"],
 		"app.tools.toggleVisibility": ["ctrl+shift+o"],
 		"app.tools.expand": ["ctrl+o"],
+		"app.approval.cycle": ["ctrl+shift+a"],
 	};
 	const customHandlers = new Map<string, () => void>();
 	const setActionKeys = vi.fn();
@@ -331,6 +334,23 @@ describe("InputController keybinding setup", () => {
 		expect(spies.showModelSelector).toHaveBeenNthCalledWith(1, { temporaryOnly: true });
 		expect(spies.showModelSelector).toHaveBeenNthCalledWith(2);
 		expect(spies.resetDisplayAfterAppearanceRefresh).toHaveBeenCalledTimes(1);
+	});
+
+	it("cycles tool approval mode in the current session", async () => {
+		const { InputController, ctx, editor, spies } = await createContext();
+		const controller = new InputController(ctx);
+
+		controller.setupKeyHandlers();
+
+		expect(spies.setActionKeys).toHaveBeenCalledWith("app.approval.cycle", ["ctrl+shift+a"]);
+		const previousMode = cfgToolsApprovalMode.get(ctx.settings);
+		const showStatus = ctx.showStatus as unknown as Mock<(message: string) => void>;
+		editor.onCycleApprovalMode?.();
+
+		const nextMode = cfgToolsApprovalMode.get(ctx.settings);
+		expect(nextMode).not.toBe(previousMode);
+		expect(ctx.settings.getProvenance(cfgToolsApprovalMode)).toBe("runtime");
+		expect(showStatus).toHaveBeenCalledWith(`Approval mode: ${nextMode}`);
 	});
 
 	it("does not mark pasted shell prompts as Python mode while editing", async () => {
