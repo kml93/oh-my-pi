@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- Added configurable shortcut (Alt+S) to open the settings menu.
+
 ## [18.4.3] - 2026-09-28
 
 ### Added
