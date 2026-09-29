@@ -1140,6 +1140,12 @@ export class CustomEditor extends Editor {
 				return;
 			}
 
+			// Intercept configured settings shortcut
+			if (this.#matchesAction(canonical, "app.settings.open") && this.onOpenSettings) {
+				this.onOpenSettings();
+				return;
+			}
+
 			// Intercept configured suspend shortcut
 			if (this.#matchesAction(canonical, "app.suspend") && this.onSuspend) {
 				this.onSuspend();

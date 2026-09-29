@@ -70,6 +70,7 @@ export function buildHotkeysMarkdown(bindings: HotkeysMarkdownBindings): string 
 		...exitRows,
 		`| \`${hotkeyLabel(bindings, "app.suspend")}\` | Suspend to background |`,
 		`| \`${hotkeyLabel(bindings, "app.display.reset")}\` | Reset terminal display |`,
+		`| \`${hotkeyLabel(bindings, "app.settings.open")}\` | Open settings |`,
 		`| \`${hotkeyLabel(bindings, "app.thinking.cycle")}\` | Cycle thinking level |`,
 		`| \`${hotkeyLabel(bindings, "app.approval.cycle")}\` | Cycle tool approval mode |`,
 		`| \`${hotkeyLabel(bindings, "app.settings.open")}\` | Open settings |`,
