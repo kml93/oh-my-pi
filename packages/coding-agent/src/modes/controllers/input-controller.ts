@@ -44,6 +44,8 @@ import { executeBuiltinSlashCommand, lookupBuiltinSlashCommand } from "../../sla
 import { parseSlashCommand, parseSubcommand } from "../../slash-commands/helpers/parse";
 import { isTinyLocalModelKey } from "../../tiny/models";
 import { tinyTitleClient } from "../../tiny/title-client";
+import { resolveApprovalModeCycle } from "../../tools/approval";
+import { cfgToolsApprovalMode } from "../../tools/settings";
 import { resolveReadPath } from "../../tools/path-utils";
 import { shortenPath, TRUNCATE_LENGTHS, truncateToWidth } from "@oh-my-pi/pi-tui/render/render-utils";
 import { vocalizer } from "../../tts/vocalizer";
@@ -581,6 +583,8 @@ export class InputController {
 		this.ctx.editor.onSuspend = () => this.handleCtrlZ();
 		this.ctx.editor.setActionKeys("app.settings.open", this.ctx.keybindings.getKeys("app.settings.open"));
 		this.ctx.editor.onOpenSettings = () => this.ctx.showSettingsSelector();
+		this.ctx.editor.setActionKeys("app.approval.cycle", this.ctx.keybindings.getKeys("app.approval.cycle"));
+		this.ctx.editor.onCycleApprovalMode = () => this.cycleApprovalMode();
 		this.ctx.editor.setActionKeys("app.thinking.cycle", this.ctx.keybindings.getKeys("app.thinking.cycle"));
 		this.ctx.editor.onCycleThinkingLevel = () => {
 			hintUsage.record("effort");
@@ -2390,6 +2394,19 @@ export class InputController {
 		} catch {
 			this.ctx.showWarning("Failed to copy to clipboard");
 		}
+	}
+
+	cycleApprovalMode(): void {
+		const result = resolveApprovalModeCycle(
+			cfgToolsApprovalMode.get(this.ctx.settings),
+			this.ctx.session.autoApprove,
+		);
+		if (result.kind === "locked") {
+			this.ctx.showStatus("Approval mode locked by --yolo/--auto-approve; restart without the flag to change it");
+			return;
+		}
+		cfgToolsApprovalMode.override(this.ctx.settings, result.mode);
+		this.ctx.showStatus(`Approval mode: ${result.mode}`);
 	}
 
 	cycleThinkingLevel(): void {
