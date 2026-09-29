@@ -18,7 +18,13 @@
 - Added `statusLine.contextMetric` (`percentage` | `tokens`, default `percentage`) to label context usage with used tokens instead of a percentage on the status line gauge, the `context_pct` segment, and the footer, with a "Context Metric" selector under Settings › Appearance › Status Line ([#13634](https://github.com/can1357/oh-my-pi/pull/13634) by [@kml93](https://github.com/kml93))
 ### Added
 
-- Added configurable shortcut (Alt+S) to open the settings menu.
+- Added configurable shortcut (Alt+S) to open the settings menu ([#13756](https://github.com/can1357/oh-my-pi/pull/13756) by [@kml93](https://github.com/kml93)).
+### Fixed
+
+- Fixed `computer.window(74)` matching every open window and `computer.window({ id: 74 })` matching none; a numeric id now resolves the same window as `"74"` ([#13649](https://github.com/can1357/oh-my-pi/pull/13649) by [@will-bogusz](https://github.com/will-bogusz))
+### Added
+
+- Added configurable shortcut (Alt+S) to open the settings menu ([#13756](https://github.com/can1357/oh-my-pi/pull/13756) by [@kml93](https://github.com/kml93)).
 
 ## [18.4.3] - 2026-09-28
 
