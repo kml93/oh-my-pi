@@ -22,7 +22,7 @@ What is the intended result?
 ├─ Durable fork-local change → `local/mod--<name>` worktree from `kml93`.
 ├─ Upstream synchronization → Follow `references/sync.md`.
 │  └─ Conflict from an in-flight PR branch (`omp/pr--*`)?
-│     └─ Abort merge → Sync PR branch on `main` first → Merge updated PR into `kml93`.
+│     └─ Abort merge → Rebuild PR branch on new `main` tip (single commit, sync.md) → Merge updated PR into `kml93`.
 └─ Trivial fork-local change → MAY edit `kml93` directly.
 ```
 
@@ -48,7 +48,7 @@ origin       (git@github.com:kml93/oh-my-pi.git)          [Read/Write, your GitH
 
 - **`main`**: Exact mirror of `upstream-omp/main`; base only for upstream OMP PRs.
 - **`kml93`**: Primary runtime branch; fork base containing custom changes and selected PI ports.
-- **`omp/pr--<name>`**: Upstream OMP PR, based on `main`.
+- **`omp/pr--<name>`**: Upstream OMP PR; exactly ONE commit on top of the current `main` tip.
 - **`pi/port--<name>`**: Selected PI port, based on `kml93`.
 - **`local/mod--<name>`**: Durable fork-local change, based on `kml93`.
 - **`omp/sync--<version>`**: Non-trivial integration of updated `main` into `kml93`.
@@ -67,7 +67,7 @@ Format: `<type>(<scope>): <short imperative description>`
 
 ## Invariants
 
-- NEVER commit custom work to `main`; keep fast-forward synchronization possible.
+- `omp/pr--*` branches stay a single commit on top of `main`; NEVER merge `main` into a PR branch — rebuild it instead (`references/sync.md`). Merge commits anchor the PR to a stale base and falsify the diff.
 - NEVER merge `upstream-pi/main`; inspect and port selected changes.
 - Verify runtime after every merge with the applicable smoke command.
 - NEVER fix pre-existing fork-local errors or regressions discovered on `kml93` directly or unilaterally: report them to the user, and once agreed, isolate any fix in a dedicated `local/mod--<name>` worktree.

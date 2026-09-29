@@ -36,13 +36,21 @@ into an unsolicited upstream sync.
 git push -u origin omp/pr--<short-description>
 ```
 
+Keep the branch at exactly ONE commit: squash or amend interim work into the
+single feature commit before every push. If `main` advanced since the last
+push, rebuild the branch per `references/sync.md` ("Rebuilding an In-Flight PR
+Branch") — never merge `main` into the branch — and force-push with
+`--force-with-lease`; GitHub review threads survive force-pushes.
+
 Open PR on GitHub:
 - Base repository: `can1357/oh-my-pi` (branch `main`)
 - Head repository: `kml93/oh-my-pi` (branch `omp/pr--<short-description>`)
 
 ## 4. Integrate into `kml93`
 
-Use the PR immediately without moving the primary checkout:
+Order matters: rebuild the PR branch on the current `main` tip first (if
+`main` moved), then merge the PR branch into `kml93`. Use the PR immediately
+without moving the primary checkout:
 
 ```bash
 git -C <primary-checkout> merge omp/pr--<short-description>
