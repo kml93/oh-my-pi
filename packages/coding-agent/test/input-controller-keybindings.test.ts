@@ -29,8 +29,6 @@ type FakeEditor = {
 	onChange?: (text: string) => void;
 	onSubmit?: (text: string) => Promise<void>;
 	onSpaceHoldStart?: () => void;
-	onCycleApprovalMode?: () => void;
-	onOpenSettings?: () => void;
 	onSpaceHoldEnd?: () => void;
 	setText(text: string): void;
 	getText(): string;
@@ -77,8 +75,6 @@ async function createContext() {
 		"app.clipboard.pasteImage": ["ctrl+v"],
 		"app.tools.toggleVisibility": ["ctrl+shift+o"],
 		"app.tools.expand": ["ctrl+o"],
-		"app.approval.cycle": ["ctrl+shift+a"],
-		"app.settings.open": ["ctrl+shift+s"],
 	};
 	const customHandlers = new Map<string, () => void>();
 	const setActionKeys = vi.fn();
@@ -91,7 +87,6 @@ async function createContext() {
 	const resetDisplay = vi.fn();
 	const clearInlineImages = vi.fn();
 	const showModelSelector = vi.fn();
-	const showSettingsSelector = vi.fn();
 	const requestRender = vi.fn();
 	const showError = vi.fn();
 	let focused: unknown;
@@ -270,7 +265,6 @@ async function createContext() {
 		handleBtwCopyKey,
 		canFollowUpBtw,
 		handleBtwFollowUpKey,
-		showSettingsSelector,
 		showError,
 		showStatus: vi.fn(),
 	} as unknown as InteractiveModeContext;
@@ -292,7 +286,6 @@ async function createContext() {
 		spies: {
 			setActionKeys,
 			showModelSelector,
-			showSettingsSelector,
 			prompt,
 			updatePendingMessagesDisplay,
 			requestRender,
@@ -338,26 +331,6 @@ describe("InputController keybinding setup", () => {
 		expect(spies.showModelSelector).toHaveBeenNthCalledWith(1, { temporaryOnly: true });
 		expect(spies.showModelSelector).toHaveBeenNthCalledWith(2);
 		expect(spies.resetDisplayAfterAppearanceRefresh).toHaveBeenCalledTimes(1);
-	});
-
-	it("registers the fork approval-cycle and settings-open actions on the composer", async () => {
-		const { InputController, ctx, editor, spies } = await createContext();
-		const controller = new InputController(ctx);
-
-		controller.setupKeyHandlers();
-
-		expect(spies.setActionKeys).toHaveBeenCalledWith("app.approval.cycle", ["ctrl+shift+a"]);
-		expect(spies.setActionKeys).toHaveBeenCalledWith("app.settings.open", ["ctrl+shift+s"]);
-		expect(editor.onCycleApprovalMode).toBeDefined();
-		expect(editor.onOpenSettings).toBeDefined();
-
-		editor.onOpenSettings?.();
-		expect(spies.showSettingsSelector).toHaveBeenCalledTimes(1);
-
-		await Settings.init({ inMemory: true });
-		const showStatus = ctx.showStatus as unknown as Mock<(message: string) => void>;
-		editor.onCycleApprovalMode?.();
-		expect(showStatus).toHaveBeenCalledWith(expect.stringMatching(/^Approval mode: /));
 	});
 
 	it("does not mark pasted shell prompts as Python mode while editing", async () => {
