@@ -1157,12 +1157,6 @@ export class CustomEditor extends Editor {
 				this.onCycleApprovalMode();
 				return;
 			}
-
-			// Intercept configured settings shortcut
-			if (this.#matchesAction(canonical, "app.settings.open") && this.onOpenSettings) {
-				this.onOpenSettings();
-				return;
-			}
 			// Intercept configured model selector shortcut
 			if (this.#matchesAction(canonical, "app.model.select") && this.onSelectModel) {
 				this.onSelectModel();
