@@ -1,6 +1,9 @@
 ---
-alwaysApply: true
 description: Issue tracking, triage vocabulary, and domain documentation for this repository.
+alwaysApply: true
+agents:
+  - main
+  - implementer
 trigger: always_on
 ---
 

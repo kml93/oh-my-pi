@@ -1,6 +1,9 @@
 ---
-alwaysApply: true
 description: Dual-upstream fork identity, mission, and architectural directives.
+alwaysApply: true
+agents:
+  - main
+  - implementer
 trigger: always_on
 ---
 
