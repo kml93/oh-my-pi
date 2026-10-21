@@ -45,16 +45,17 @@ sh packages/coding-agent/scripts/omp --smoke-test
 place. Only use it when the branch's `packages/natives/package.json` version
 matches the main checkout — otherwise fetch pinned addons instead (see above).
 
-## Usage machines (dist, no repo)
+## Usage machines (release binary, no repo)
 
-Rolling prerelease `dist` on the fork, rebuilt on every push to `kml93`
-(`.github/workflows/dist-release.yml`; natives are fetched from the npm leaf
-and embedded in the ELF — nothing else to install):
+Rolling prerelease `latest` on the fork, rebuilt on every push to `kml93`
+(`.github/workflows/latest-release.yml`; natives are fetched from the npm leaf
+and embedded in the ELF — nothing else to install). Assets: `omp-linux-x64`
+and `omp-linux-arm64` (glibc; on Termux run it through `grun`).
 
 ```bash
 curl -fsSL -o ~/.config/local/bin/omp \
-  https://github.com/kml93/oh-my-pi/releases/download/dist/omp-linux-x64
+  https://github.com/kml93/oh-my-pi/releases/download/latest/omp-linux-x64
 chmod +x ~/.config/local/bin/omp
 ```
 
-Stable URL — re-run both commands to update. linux-x64/glibc only.
+Stable URL — re-run both commands to update. Swap `omp-linux-x64` for `omp-linux-arm64` on aarch64.
