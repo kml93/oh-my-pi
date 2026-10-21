@@ -5,6 +5,7 @@
 ### Added
 
 - Added the `app.approval.cycle` keybinding (unbound by default) to cycle the tool approval mode for the current session only
+- Added configurable shortcut (Alt+S) to open the settings menu ([#13756](https://github.com/can1357/oh-my-pi/pull/13756) by [@kml93](https://github.com/kml93)).
 
 ### Fixed
 
