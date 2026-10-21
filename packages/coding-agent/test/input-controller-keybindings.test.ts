@@ -11,6 +11,8 @@ import { initTheme } from "@oh-my-pi/pi-tui/theme";
 import type { InteractiveModeContext } from "@oh-my-pi/pi-coding-agent/modes/types";
 import type { SessionTreeNode } from "@oh-my-pi/pi-coding-agent/session/session-entries";
 import { type KeyId, matchesKey } from "@oh-my-pi/pi-tui";
+import { nextApprovalMode } from "@oh-my-pi/pi-coding-agent/tools/approval";
+import { cfgToolsApprovalMode } from "@oh-my-pi/pi-coding-agent/tools/settings";
 import { TempDir } from "@oh-my-pi/pi-utils";
 import manualContinuePrompt from "../src/prompts/system/manual-continue.md" with { type: "text" };
 import { imageAttachmentSource } from "@oh-my-pi/pi-tui/prompt/image-source";
@@ -23,6 +25,7 @@ type FakeEditor = {
 	onDisplayReset?: () => void;
 	onSuspend?: () => void;
 	onCycleThinkingLevel?: () => void;
+	onCycleApprovalMode?: () => void;
 	onCycleModelForward?: () => void;
 	onCycleModelBackward?: () => void;
 	onSelectModelTemporary?: () => void;
@@ -78,6 +81,7 @@ async function createContext() {
 		"app.clipboard.pasteImage": ["ctrl+v"],
 		"app.tools.toggleVisibility": ["ctrl+shift+o"],
 		"app.tools.expand": ["ctrl+o"],
+		"app.approval.cycle": ["ctrl+shift+a"],
 	};
 	const customHandlers = new Map<string, () => void>();
 	const setActionKeys = vi.fn();
@@ -339,6 +343,22 @@ describe("InputController keybinding setup", () => {
 		expect(spies.showModelSelector).toHaveBeenNthCalledWith(1, { temporaryOnly: true });
 		expect(spies.showModelSelector).toHaveBeenNthCalledWith(2);
 		expect(spies.resetDisplayAfterAppearanceRefresh).toHaveBeenCalledTimes(1);
+	});
+
+	it("cycles tool approval mode as a session-only override", async () => {
+		const { InputController, ctx, editor, spies } = await createContext();
+		const controller = new InputController(ctx);
+
+		controller.setupKeyHandlers();
+
+		expect(spies.setActionKeys).toHaveBeenCalledWith("app.approval.cycle", ["ctrl+shift+a"]);
+		const previousMode = cfgToolsApprovalMode.get(ctx.settings);
+		editor.onCycleApprovalMode?.();
+
+		const nextMode = cfgToolsApprovalMode.get(ctx.settings);
+		expect(nextMode).toBe(nextApprovalMode(previousMode));
+		expect(ctx.settings.getProvenance(cfgToolsApprovalMode)).toBe("runtime");
+		expect(ctx.showStatus).toHaveBeenCalledWith(`Approval mode: ${nextMode}`);
 	});
 
 	it("enters Python mode only once whitespace follows a typed sigil", async () => {

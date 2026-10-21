@@ -52,6 +52,8 @@ import { parseSlashCommand, parseSubcommand } from "../../slash-commands/helpers
 import { isTinyLocalModelKey } from "../../tiny/models";
 import { tinyTitleClient } from "../../tiny/title-client";
 import { resolveReadPath } from "../../tools/path-utils";
+import { resolveApprovalModeCycle } from "../../tools/approval";
+import { cfgToolsApprovalMode } from "../../tools/settings";
 import { shortenPath, TRUNCATE_LENGTHS, truncateToWidth } from "@oh-my-pi/pi-tui/render/render-utils";
 import { vocalizer } from "../../tts/vocalizer";
 import {
@@ -640,6 +642,8 @@ export class InputController {
 			hintUsage.record("effort");
 			this.cycleThinkingLevel();
 		};
+		this.ctx.editor.setActionKeys("app.approval.cycle", this.ctx.keybindings.getKeys("app.approval.cycle"));
+		this.ctx.editor.onCycleApprovalMode = () => this.cycleApprovalMode();
 		this.ctx.editor.setActionKeys("app.model.cycleForward", this.ctx.keybindings.getKeys("app.model.cycleForward"));
 		this.ctx.editor.onCycleModelForward = () => this.cycleRoleModel("forward");
 		this.ctx.editor.setActionKeys("app.model.cycleBackward", this.ctx.keybindings.getKeys("app.model.cycleBackward"));
@@ -2679,6 +2683,19 @@ export class InputController {
 		} catch {
 			this.ctx.showWarning("Failed to copy to clipboard");
 		}
+	}
+
+	cycleApprovalMode(): void {
+		const result = resolveApprovalModeCycle(
+			cfgToolsApprovalMode.get(this.ctx.settings),
+			this.ctx.session.autoApprove,
+		);
+		if (result.kind === "locked") {
+			this.ctx.showStatus("Approval mode locked by --yolo/--auto-approve; restart without the flag to change it");
+			return;
+		}
+		cfgToolsApprovalMode.override(this.ctx.settings, result.mode);
+		this.ctx.showStatus(`Approval mode: ${result.mode}`);
 	}
 
 	cycleThinkingLevel(): void {

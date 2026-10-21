@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- Added the configurable `app.approval.cycle` editor action
+
 ### Fixed
 
 - Fixed the `/agents` and `/models` hubs in Tern squeezing the left sidebar as long lines (such as a streaming new-agent draft) widen the body pane

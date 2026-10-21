@@ -6468,6 +6468,11 @@ export class AgentSession implements SettingsScope {
 		return this.#models.isAutoThinking;
 	}
 
+	/** Whether the caller explicitly locked this session to auto-approve. */
+	get autoApprove(): boolean {
+		return this.#tools.autoApprove;
+	}
+
 	/** The level `auto` resolved to for the current turn (undefined until classified). */
 	autoResolvedThinkingLevel(): Effort | undefined {
 		return this.#models.autoResolvedThinkingLevel;
