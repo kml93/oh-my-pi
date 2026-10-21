@@ -867,6 +867,15 @@ export class Settings {
 	}
 
 	/**
+	 * Like {@link rawValue}, ignoring runtime overrides: the value from global, project, `--config`
+	 * overlay and overlay parent, or `undefined` when unset. Read it through `Setting.persisted`.
+	 */
+	persistedValue(setting: AnySetting): unknown {
+		const persisted = this.#mergeOverParent(this.#mergeOwnLayers({ ...this.#ownLayers(), overrides: {} }));
+		return configuredValue(persisted, setting, this.#cwd);
+	}
+
+	/**
 	 * Whether `setting` has an explicitly configured value (global config, project
 	 * config, or runtime override) rather than falling back to the schema default.
 	 * A configured `null` counts as unset, like in {@link rawValue}.

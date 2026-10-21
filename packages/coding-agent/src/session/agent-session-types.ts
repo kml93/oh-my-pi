@@ -152,6 +152,13 @@ export interface UsageFallbackConfirmation {
  */
 export type UsageFallbackConfirmer = (confirmation: UsageFallbackConfirmation, signal: AbortSignal) => Promise<boolean>;
 
+/**
+ * Why the session switch reconciler runs: `/new` or a resume opened another conversation, a resume
+ * reloaded the current one, a branch continues the current one in a new session file, or a failed
+ * switch rolled back to the previous one.
+ */
+export type SessionTransitionReason = "new" | "resume" | "reload" | "branch" | "rollback";
+
 /** Identifies a retry fallback chain already entered during startup model resolution. */
 export interface InitialRetryFallbackState {
 	/** Role whose configured primary was unavailable. */

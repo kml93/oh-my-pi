@@ -4,7 +4,7 @@
 
 ### Added
 
-- Added the `app.approval.cycle` keybinding (unbound by default) to cycle the tool approval mode for the current session only
+- Added the `app.approval.cycle` keybinding (unbound by default) to cycle the tool approval mode for the current session only. Interactive sessions now fix their approval mode when they start (from `--approval-mode`, else config), so `/settings` and config edits apply from the next `/new` or resume, and `/settings` shows the configured mode instead of the session one
 - Added configurable shortcut (Alt+S) to open the settings menu ([#13756](https://github.com/can1357/oh-my-pi/pull/13756) by [@kml93](https://github.com/kml93)).
 - File mentions now accept line selectors such as `@src/app.ts:40-80`, `@src/app.ts:1-5,20-30`, and tails like `@log.txt:-60`, injecting only the requested lines into the prompt ([#10623](https://github.com/can1357/oh-my-pi/pull/10623) by [@kml93](https://github.com/kml93)). Selectors survive quoted paths (`@"My Folder/a.ts":1-5`); invalid ranges are ignored silently.
 - Speech-to-text dictation can transcribe through the ChatGPT/Codex subscription (`openai-codex/transcribe` as the `dictation` model), without an OpenAI API key ([#12853](https://github.com/can1357/oh-my-pi/pull/12853))

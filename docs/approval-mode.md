@@ -26,6 +26,8 @@ Configure with `tools.approvalMode`:
 
 `--approval-mode <mode>` overrides the configured mode for the session. `--auto-approve` and `--yolo` force yolo execution even when an explicit `--approval-mode` is also supplied; tool/user denies and explicit tool prompt policies still apply.
 
+In interactive mode, each session fixes its approval mode when it starts: the `--approval-mode` (or `--yolo`) value given at launch, else the configured one. Changing `tools.approvalMode` in `/settings` or config.yml applies from the next `/new` or resume, and `/settings` shows the configured mode. The `app.approval.cycle` keybinding (unbound by default, see [keybindings](keybindings.md)) changes the mode of the current session only; a branch or fork keeps it.
+
 ### Ask and remember (`always-ask-cached`)
 
 Ask and remember prompts like `always-ask`, and also before a tool reads a file it has not been granted. Its prompts can remember what the call touched:

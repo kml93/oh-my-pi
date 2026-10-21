@@ -17,6 +17,7 @@ import { cfgMemoryBackend } from "../memory-backend/settings";
 import { cfgTuiVimMode } from "../modes/settings";
 import { cfgAdvisorEnabled } from "../advisor/settings";
 import { cfgContextFilesExtra } from "../session/context-settings";
+import { cfgToolsApprovalMode } from "../tools/settings";
 
 /** Condition over the global settings; hidden (false) until they are initialized. */
 function whenSettings(test: (settings: Settings) => boolean): () => boolean {
@@ -78,7 +79,12 @@ export function createSettingsHost(): SettingsHost {
 	};
 	return {
 		entries,
-		get: path => lookup(path)?.layered(settings),
+		// The running session pins its approval mode (launch flag, then `app.approval.cycle`), so the
+		// panel shows and edits the config value new sessions start from.
+		get: path => {
+			const setting = lookup(path);
+			return setting === cfgToolsApprovalMode ? setting.persisted(settings) : setting?.layered(settings);
+		},
 		set: (path, value) => resolve(path).set(settings, value),
 		unset: path => resolve(path).unset(settings),
 		normalizeProviderLimits: normalizeProviderMaxInFlightRequests,

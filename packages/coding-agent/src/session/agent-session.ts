@@ -304,6 +304,7 @@ import type {
 	SessionHandoffOptions,
 	SessionOAuthAccountList,
 	SessionStats,
+	SessionTransitionReason,
 	SteerOptions,
 	UsageFallbackConfirmer,
 } from "./agent-session-types";
@@ -2930,9 +2931,9 @@ export class AgentSession implements SettingsScope {
 		this.#sessionBeforeSwitchReconciler = reconciler ?? undefined;
 	}
 
-	#sessionSwitchReconciler: (() => Promise<void>) | undefined;
+	#sessionSwitchReconciler: ((reason: SessionTransitionReason) => Promise<void>) | undefined;
 
-	setSessionSwitchReconciler(reconciler: (() => Promise<void>) | null): void {
+	setSessionSwitchReconciler(reconciler: ((reason: SessionTransitionReason) => Promise<void>) | null): void {
 		this.#sessionSwitchReconciler = reconciler ?? undefined;
 	}
 
@@ -2946,9 +2947,9 @@ export class AgentSession implements SettingsScope {
 	 * reason. Best-effort: a reconcile failure must not roll back an
 	 * otherwise-successful transition.
 	 */
-	async #reconcileModeAfterTransition(): Promise<void> {
+	async #reconcileModeAfterTransition(reason: "new" | "branch"): Promise<void> {
 		try {
-			await this.#sessionSwitchReconciler?.();
+			await this.#sessionSwitchReconciler?.(reason);
 		} catch (error) {
 			logger.warn("Failed to reconcile session mode after session transition", {
 				sessionFile: this.sessionFile,
@@ -10385,7 +10386,7 @@ export class AgentSession implements SettingsScope {
 			this.#advisors.resetSessionState();
 			advisorRecordersDetached = false;
 			this.#reconnectToAgent();
-			await this.#reconcileModeAfterTransition();
+			await this.#reconcileModeAfterTransition("new");
 			// Drop the process-lifetime context-file cache so the rebuild re-reads
 			// AGENTS.md and friends from disk: the user may have edited them since
 			// the previous session started, and refreshBaseSystemPrompt() re-runs
@@ -12171,8 +12172,10 @@ export class AgentSession implements SettingsScope {
 				this.#clearSessionScopedToolState();
 			}
 			this.#reconnectToAgent();
+			let transitionReason: SessionTransitionReason = "reload";
+			if (switchingToDifferentSession) transitionReason = "resume";
 			try {
-				await this.#sessionSwitchReconciler?.();
+				await this.#sessionSwitchReconciler?.(transitionReason);
 			} catch (error) {
 				logger.warn("Failed to reconcile session mode after switch", {
 					targetSessionFile: sessionPath,
@@ -12269,7 +12272,7 @@ export class AgentSession implements SettingsScope {
 			this.#advisors.reattachRecorderFeeds();
 			this.#reconnectToAgent();
 			try {
-				await this.#sessionSwitchReconciler?.();
+				await this.#sessionSwitchReconciler?.("rollback");
 			} catch (reconcileError) {
 				logger.warn("Failed to reconcile session mode after switch rollback", {
 					targetSessionFile: sessionPath,
@@ -12459,7 +12462,7 @@ export class AgentSession implements SettingsScope {
 
 			this.#advisors.reattachRecorderFeeds();
 			advisorRecordersDetached = false;
-			await this.#reconcileModeAfterTransition();
+			await this.#reconcileModeAfterTransition("branch");
 			return true;
 		} finally {
 			if (advisorRecordersDetached) {
@@ -12575,7 +12578,7 @@ export class AgentSession implements SettingsScope {
 			this.#advisors.resetSessionState();
 			this.#closeCodexProviderSessionsForHistoryRewrite();
 			advisorRecordersDetached = false;
-			await this.#reconcileModeAfterTransition();
+			await this.#reconcileModeAfterTransition("branch");
 
 			return { cancelled: false, sessionFile: this.sessionFile };
 		} finally {
