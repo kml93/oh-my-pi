@@ -8,6 +8,7 @@
 - Added configurable shortcut (Alt+S) to open the settings menu ([#13756](https://github.com/can1357/oh-my-pi/pull/13756) by [@kml93](https://github.com/kml93)).
 - File mentions now accept line selectors such as `@src/app.ts:40-80`, `@src/app.ts:1-5,20-30`, and tails like `@log.txt:-60`, injecting only the requested lines into the prompt ([#10623](https://github.com/can1357/oh-my-pi/pull/10623) by [@kml93](https://github.com/kml93)). Selectors survive quoted paths (`@"My Folder/a.ts":1-5`); invalid ranges are ignored silently.
 - Speech-to-text dictation can transcribe through the ChatGPT/Codex subscription (`openai-codex/transcribe` as the `dictation` model), without an OpenAI API key ([#12853](https://github.com/can1357/oh-my-pi/pull/12853))
+- The `app.stt.toggle` dictation shortcut now follows keyboard focus across every TUI text field (ask dialog `Other`/note prompts, the extension editor dialog, advisor instructions, plan review, agents hub, git commit description, annotations, subagent transcript viewer): recording survives dialogs opening or closing mid-capture, the transcript is inserted at the cursor of the field focused when recording stops (or into the composer draft with a status message when no text field is focused), and `stt.submitTrigger` applies to the receiving field ([#13169](https://github.com/can1357/oh-my-pi/pull/13169) by [@kml93](https://github.com/kml93))
 
 ### Fixed
 
@@ -1539,6 +1540,7 @@
 
 ### Added
 
+- Added `additionalContext` to extension and hook `tool_call` results, plus `ctx.addAdditionalContext()` for registered tools, to pass trusted instructions to the model after a tool call without changing its result ([#11998](https://github.com/can1357/oh-my-pi/pull/11998) by [@H4vC](https://github.com/H4vC))
 - The shell's `cp` builtin accepts macOS's `-c` (clone where possible, else copy; same as `--reflink=auto`).
 
 ### Changed
