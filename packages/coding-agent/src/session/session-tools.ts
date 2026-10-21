@@ -433,6 +433,10 @@ export class SessionTools {
 	#promptSurface: PromptSurface;
 	#acpPermissionDecisions = new Map<string, "allow_always" | "reject_always">();
 
+	get autoApprove(): boolean {
+		return this.#autoApprove;
+	}
+
 	constructor(host: SessionToolsHost, options: SessionToolsOptions) {
 		this.#host = host;
 		this.#autoApprove = options.autoApprove === true;

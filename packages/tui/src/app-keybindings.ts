@@ -30,6 +30,7 @@ interface AppKeybindings {
 	"app.suspend": true;
 	"app.display.reset": true;
 	"app.thinking.cycle": true;
+	"app.approval.cycle": true;
 	"app.thinking.toggle": true;
 	"app.model.cycleForward": true;
 	"app.model.cycleBackward": true;
@@ -111,6 +112,10 @@ export const KEYBINDINGS = {
 	"app.thinking.cycle": {
 		defaultKeys: "shift+tab",
 		description: "Cycle thinking level",
+	},
+	"app.approval.cycle": {
+		defaultKeys: [],
+		description: "Cycle tool approval mode",
 	},
 	"app.thinking.toggle": {
 		defaultKeys: "ctrl+t",

@@ -406,7 +406,8 @@ import {
 	cfgTuiVimMode,
 	cfgTuiVimModeDisplay,
 } from "./settings";
-import { cfgTasksTodoClearDelay } from "../tools/settings";
+import { cfgTasksTodoClearDelay, cfgToolsApprovalMode } from "../tools/settings";
+import type { ApprovalMode } from "../tools/approval";
 import { cfgWorktreeOnExit, cfgWorktreeOnStart } from "../task/settings";
 import { cfgExpandThinkingBlocks, cfgProseOnlyThinking } from "../session/settings";
 import { cfgHideThinkingBlock } from "../session/settings";
@@ -1279,6 +1280,8 @@ const JOBS_SHEET_REFRESH_MS = 250;
 
 export class InteractiveMode implements InteractiveModeContext {
 	#ownsStartedUi: boolean;
+	/** Approval mode set at launch (`--approval-mode`, `--yolo`); else sessions start from the config value. */
+	#launchApprovalMode: ApprovalMode | undefined;
 	session: AgentSession;
 	sessionManager: SessionManager;
 	refreshScopedModelsAfterLogin?: () => Promise<void>;
@@ -2563,7 +2566,12 @@ export class InteractiveMode implements InteractiveModeContext {
 			await this.#liveCommandController.stop();
 			await this.#quiesceVibeForSessionSwitch();
 		});
-		this.session.setSessionSwitchReconciler?.(() => this.#reconcileModeFromSession({ preserveActiveGoal: true }));
+		this.#launchApprovalMode = this.#readLaunchApprovalMode();
+		this.#pinSessionApprovalMode();
+		this.session.setSessionSwitchReconciler?.(async reason => {
+			if (reason === "new" || reason === "resume") this.#pinSessionApprovalMode();
+			await this.#reconcileModeFromSession({ preserveActiveGoal: true });
+		});
 		await logger.time("InteractiveMode.init:reconcileMode", () => this.#reconcileModeFromSession());
 
 		// Brand-new sessions optionally start in plan mode when the user has made it
@@ -5038,6 +5046,26 @@ export class InteractiveMode implements InteractiveModeContext {
 			}
 			this.#updateVibeModeStatus();
 		}
+	}
+
+	/** Approval mode the launch flags (`--approval-mode`, `--yolo`) set as a runtime override, if any. */
+	#readLaunchApprovalMode(): ApprovalMode | undefined {
+		const sessionSettings = this.session.settings;
+		if (sessionSettings.getProvenance(cfgToolsApprovalMode) !== "runtime") return undefined;
+		return cfgToolsApprovalMode.get(sessionSettings);
+	}
+
+	/** Approval mode a new session starts on: the launch flag, else the config value. */
+	#sessionStartApprovalMode(): ApprovalMode {
+		return this.#launchApprovalMode ?? cfgToolsApprovalMode.persisted(this.session.settings);
+	}
+
+	/**
+	 * Pin the session start approval mode as a runtime override: later config edits (`/settings`,
+	 * config.yml) apply to new sessions only, and `app.approval.cycle` changes this session alone.
+	 */
+	#pinSessionApprovalMode(): void {
+		cfgToolsApprovalMode.override(this.session.settings, this.#sessionStartApprovalMode());
 	}
 
 	/** Reconcile mode state from session entries on resume/switch. */

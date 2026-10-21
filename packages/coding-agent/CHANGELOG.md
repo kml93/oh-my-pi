@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- Added the `app.approval.cycle` keybinding (unbound by default) to cycle the tool approval mode for the current session only. Interactive sessions now fix their approval mode when they start (from `--approval-mode`, else config), so `/settings` and config edits apply from the next `/new` or resume, and `/settings` shows the configured mode instead of the session one
+
 ### Fixed
 
 - Fixed the advisor prompt forbidding all repeated advice, including real escalations: advisors may now re-raise a prior nit or concern as a blocker once new evidence makes it one ([#13887](https://github.com/can1357/oh-my-pi/issues/13887), [#16484](https://github.com/can1357/oh-my-pi/pull/16484) by [@pjh890321](https://github.com/pjh890321))

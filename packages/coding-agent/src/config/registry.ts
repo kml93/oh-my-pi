@@ -549,6 +549,15 @@ export class Setting<T, Id extends string = string> extends Derived<T> {
 	}
 
 	/**
+	 * Like {@link layered}, ignoring runtime overrides (`--approval-mode`, session-only toggles):
+	 * the value config files give, else the default.
+	 */
+	persisted(scope: ScopeLike): T {
+		const settings = settingsOf(scope);
+		return this.compute([settings.persistedValue(this)], settings);
+	}
+
+	/**
 	 * Parses user- or agent-supplied text (`omp config set`, `write cfg://…`) into a value of this
 	 * setting's type. Booleans accept true/false, yes/no, on/off, 1/0; arrays and records take JSON;
 	 * strings and enums accept bare text or a JSON-quoted string.
