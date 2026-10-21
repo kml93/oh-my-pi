@@ -20,6 +20,7 @@ import {
 	type TtsLocalModelKey,
 	type TtsLocalModelSpec,
 } from "./models";
+import { loadPythonRuntime } from "./python-runtime";
 import {
 	getTtsRuntimeDir,
 	KOKORO_PACKAGE,
@@ -133,7 +134,7 @@ function configureTransformers(transformers: TransformersEnv): void {
  * the TTS pipeline is audio-only, so the native image codec transformers eagerly
  * requires is dead weight. Memoized so the runtime loads once per process.
  */
-function loadKokoroRuntime(
+export function loadKokoroRuntime(
 	transport: TtsTransport,
 	requestId: string,
 	modelKey: TtsLocalModelKey,
@@ -230,7 +231,7 @@ async function loadModel(
 	const cached = replayCachedReady(models, modelKey, transport, requestId, TTS_TASK, spec.repo);
 	if (cached) return cached;
 
-	const runtime = await loadKokoroRuntime(transport, requestId, modelKey);
+	const runtime = await loadPythonRuntime(transport, requestId, modelKey);
 	const startedAt = performance.now();
 	const loaded = loadModelWithDeviceFallback(runtime, spec, modelKey, transport, requestId).then(
 		({ model, device }) => {
