@@ -50,6 +50,7 @@ export const KOKORO_VOICES: readonly TtsLocalVoiceSpec[] = [
 	{ id: "bf_emma", label: "Emma (British female)" },
 	{ id: "bm_george", label: "George (British male)" },
 	{ id: "bm_fable", label: "Fable (British male)" },
+	{ id: "ff_siwis", label: "Siwis (French female)" },
 ] as const;
 
 /** Default voice within the default model — Kokoro's flagship grade-A voice. */

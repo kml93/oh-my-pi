@@ -26,7 +26,7 @@ export function getTinyMlxModelDir(repo: string): string {
 	return path.join(getTinyModelsCacheDir(), "mlx", repo.replace("/", "--"));
 }
 
-function venvPython(runtimeDir: string): string {
+export function venvPython(runtimeDir: string): string {
 	return path.join(runtimeDir, "bin", "python");
 }
 
