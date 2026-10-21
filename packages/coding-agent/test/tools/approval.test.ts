@@ -9,7 +9,9 @@ import {
 	requiresApproval,
 	resolveApproval,
 	resolveApprovalFromContext,
+	nextApprovalMode,
 	truncateForPrompt,
+	resolveApprovalModeCycle,
 } from "@oh-my-pi/pi-coding-agent/tools/approval";
 import { BashTool } from "@oh-my-pi/pi-coding-agent/tools/bash";
 import { WriteTool } from "@oh-my-pi/pi-coding-agent/tools/write";
@@ -53,6 +55,26 @@ function bashApproval(command: string, settingsOverrides: Record<string, unknown
 	if (typeof approval !== "function") throw new Error("Bash approval must be dynamic");
 	return approval({ command });
 }
+
+describe("approval mode cycling", () => {
+	it("cycles every mode through the strictness loop", () => {
+		expect(nextApprovalMode("always-ask")).toBe("always-ask-cached");
+		expect(nextApprovalMode("always-ask-cached")).toBe("write");
+		expect(nextApprovalMode("write")).toBe("yolo");
+		expect(nextApprovalMode("yolo")).toBe("always-ask");
+	});
+
+	it("keeps explicit auto-approve sessions locked to yolo", () => {
+		expect(resolveApprovalModeCycle("yolo", true)).toEqual({
+			kind: "locked",
+			reason: "--yolo/--auto-approve",
+		});
+	});
+
+	it("returns the next mode when auto-approve is not locked", () => {
+		expect(resolveApprovalModeCycle("write", false)).toEqual({ kind: "changed", mode: "yolo" });
+	});
+});
 
 describe("resolveApproval tier matrix", () => {
 	const cases: Array<[ApprovalMode, "read" | "write" | "exec", "allow" | "prompt"]> = [

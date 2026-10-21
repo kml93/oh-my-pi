@@ -127,6 +127,7 @@ function hotkeyGroups(bindings: HotkeysMarkdownBindings): HotkeyGroup[] {
 				{ keys: [act("app.suspend")], action: "Suspend to background" },
 				{ keys: [act("app.display.reset")], action: "Reset terminal display" },
 				{ keys: [act("app.thinking.cycle")], action: "Cycle thinking level" },
+				{ keys: [act("app.approval.cycle")], action: "Cycle tool approval mode" },
 				{ keys: [act("app.model.cycleForward")], action: "Cycle role models (slow/default/smol)" },
 				{ keys: [act("app.model.cycleBackward")], action: "Cycle role models (backward)" },
 				{ keys: [act("app.model.selectTemporary")], action: "Select model (temporary)" },
