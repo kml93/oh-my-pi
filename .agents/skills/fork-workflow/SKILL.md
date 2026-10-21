@@ -1,0 +1,75 @@
+---
+name: fork-workflow
+description: Use before any task that may create a commit or PR, including conditional bug investigations, and for branch choice, upstream sync, ports, merges, or running/testing omp locally. Load before inspecting or editing when a PR is possible.
+---
+
+# Dual-Upstream Fork Workflow (`oh-my-pi` + `pi`)
+
+Operational procedures for maintaining `kml93/oh-my-pi`, a live fork based on `can1357/oh-my-pi` with selective feature ports from `earendil-works/pi`.
+
+## Decision Tree
+
+Destination determines the base: upstream OMP work starts from `main`; fork-local work starts from `kml93`. Keep the primary checkout on `kml93`.
+
+```text
+What is the intended result?
+├─ Read-only inspection → No branch or worktree.
+├─ PR to can1357/oh-my-pi → `omp/pr--<name>` worktree from current `main`.
+│  └─ PR only if a bug is confirmed? Investigate read-only first.
+│     ├─ Not confirmed → Report; stop unchanged.
+│     └─ Confirmed → Create the worktree before the first edit.
+├─ Selective port from earendil-works/pi → `pi/port--<name>` worktree from `kml93`.
+├─ Durable fork-local change → `local/mod--<name>` worktree from `kml93`.
+├─ Upstream synchronization → Follow `references/sync.md`.
+│  └─ Conflict from an in-flight PR branch (`omp/pr--*`)?
+│     └─ Abort merge → Rebuild PR branch on new `main` tip (single commit, sync.md) → Merge updated PR into `kml93`.
+└─ Trivial fork-local change → MAY edit `kml93` directly.
+```
+
+Uncertain whether a change is trivial? Use `local/mod--<name>`. Every non-trivial change MUST use a dedicated worktree.
+
+Read the matching procedure before changing repository state:
+
+- OMP PR → `references/pr-workflow.md`
+- PI port → `references/porting.md`
+- OMP/PI synchronization → `references/sync.md`
+- Running or testing another branch → `references/runtime.md`
+- Feedback since the last push (agent fix-up rounds) → run `scripts/pr-feedback.ts <pr-number>` from the skill root (see `--help`)
+
+## Remotes Architecture
+
+```text
+upstream-omp (https://github.com/can1357/oh-my-pi.git)   [Read-only, official omp]
+upstream-pi  (https://github.com/earendil-works/pi.git)    [Read-only, official pi]
+origin       (git@github.com:kml93/oh-my-pi.git)          [Read/Write, your GitHub]
+```
+
+## Branch Roles
+
+- **`main`**: Exact mirror of `upstream-omp/main`; base only for upstream OMP PRs.
+- **`kml93`**: Primary runtime branch; fork base containing custom changes and selected PI ports.
+- **`omp/pr--<name>`**: Upstream OMP PR; exactly ONE commit on top of the current `main` tip.
+- **`pi/port--<name>`**: Selected PI port, based on `kml93`.
+- **`local/mod--<name>`**: Durable fork-local change, based on `kml93`.
+- **`omp/sync--<version>`**: Non-trivial integration of updated `main` into `kml93`.
+
+## Commit Conventions
+
+Format: `<type>(<scope>): <short imperative description>`
+
+- `port(pi): <desc>`: Port or adaptation from PI.
+- `fix(omp): <desc>`: OMP core bug fix.
+- `feat(custom): <desc>`: Fork-local capability.
+- `sync(omp): <desc>`: OMP upstream integration.
+- `sync(pi): <desc>`: Selected PI fix synchronization.
+- `refactor(<scope>): <desc>`: Internal reorganization.
+- `chore: <desc>`: Tooling or environment change.
+
+## Invariants
+
+- `omp/pr--*` branches stay a single commit on top of `main`; NEVER merge `main` into a PR branch — rebuild it instead (`references/sync.md`). Merge commits anchor the PR to a stale base and falsify the diff.
+- NEVER merge `upstream-pi/main`; inspect and port selected changes.
+- Verify runtime after every merge with the applicable smoke command.
+- NEVER fix pre-existing fork-local errors or regressions discovered on `kml93` directly or unilaterally: report them to the user, and once agreed, isolate any fix in a dedicated `local/mod--<name>` worktree.
+
+Dev runtime setup uses `scripts/setup-minimum-runtime-dev.sh`.

@@ -1,3 +1,9 @@
+---
+description: AGENTS.md
+alwaysApply: true
+agents:
+  - implementer
+---
 # Development Rules
 
 ## Default Context
